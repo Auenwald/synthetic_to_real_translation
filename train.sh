@@ -1,0 +1,12 @@
+python trainv2.py --source_path ./synthia --target_path ./bdd --batch_size 4 --lr 5.0e-3 --optimizer SGD --epochs 30 --use_logging True --log_file ./logs_new/synthia_to_bdd_segformer_b5_SGD_lr_5e04_decay_0995_randomCrop_randomBrightnessContrast.txt --skip_val_source false --decay_factor 0.995 --weight_averaging True --train_print_steps 50
+python trainv2.py --source_path ./synthia --target_path ./bdd --batch_size 4 --lr 1.0e-3 --optimizer SGD --epochs 30 --use_logging True --log_file ./logs_new/synthia_to_bdd_segformer_b5_SGD_lr_1e03_decay_0999_randomCrop_randomBrightnessContrast.txt --skip_val_source false --decay_factor 0.999 --weight_averaging True --train_print_steps 50
+python trainv2.py --source_path ./synthia --target_path ./bdd --batch_size 4 --lr 1.0e-4 --optimizer SGD --epochs 30 --use_logging True --log_file ./logs_new/synthia_to_bdd_segformer_b5_SGD_lr_1e04_decay_0995_randomCrop_randomBrightnessContrast.txt --skip_val_source false --decay_factor 0.995 --weight_averaging True --train_print_steps 50
+
+
+python trainv2.py --source_path ./synthia --target_path ./cityscapes --batch_size 4 --lr 5.0e-3 --optimizer SGD --epochs 70 --use_logging True --log_file ./logs_new/synthia_to_cityscapes_segformer_b5_SGD_lr_5e03_decay_0995.txt --skip_val_source false --decay_factor 0.995 --weight_averaging True --train_print_steps 50
+
+
+CUBLAS_WORKSPACE_CONFIG=:4096:2 python trainv2.py --source_path ./synthia --target_path ./cityscapes --batch_size 4 --lr 5.0e-3 --optimizer SGD --epochs 70 --use_logging True --log_file ./logs_new/synthia_to_cityscapes_segformer_b5_SGD_lr_5e03_decay_0995.txt --skip_val_source false --decay_factor 0.995 --weight_averaging True --train_print_steps 50
+CUBLAS_WORKSPACE_CONFIG=:16:8 python trainv2.py --source_path ./synthia --target_path ./cityscapes --batch_size 4 --lr 5.0e-3 --optimizer SGD --epochs 70 --use_logging True --log_file ./logs_new/synthia_to_cityscapes_segformer_b5_SGD_lr_5e03_decay_0995.txt --skip_val_source false --decay_factor 0.995 --weight_averaging True --train_print_steps 50
+
+python trainv2.py --source_path ./synthia --target_path ./cityscapes --batch_size 4 --lr 1.0e-2 --optimizer SGD --epochs 70 --use_logging True --log_file ./logs_final/synthia_to_cityscapes_segformer_b5_SGD_lr_1e02_decay_0995_randomBrightness.txt --skip_val_source false --decay_factor 0.995 --weight_averaging True --train_print_steps 50
