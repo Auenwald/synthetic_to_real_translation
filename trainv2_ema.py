@@ -93,8 +93,18 @@ def main():
 
 
     model = model.to(DEVICE)
+
+
+    num_params = 0
+    for i, p in enumerate(model.parameters()):
+        num_params = num_params + 1
+
+    params_ema_limit = num_params // 2
+    ema_params = [p for i, p in enumerate(model.parameters()) if i < params_ema_limit] 
+
+
     if WEIGHT_AVERAGING:
-        ema = ExponentialMovingAverage(filter(lambda p: p.requires_grad, model.parameters()), decay=DECAY_FACTOR)
+        ema = ExponentialMovingAverage(filter(lambda p: p.requires_grad, ema_params), decay=DECAY_FACTOR)
     else:
         ema = None
 

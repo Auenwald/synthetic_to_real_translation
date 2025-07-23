@@ -3,8 +3,10 @@ import torch.optim
 import os
 import argparse
 from torch.utils.data import DataLoader, Dataset
+from torch import nn
 from dataset_cityscapes import *
 from dataset_synthia import *
+from dataset_synthia_style import *
 from dataset_bdd import *
 import segmentation_models_pytorch as smp
 import numpy as np
@@ -17,7 +19,10 @@ from torchmetrics.functional import jaccard_index
 from segformer_pytorch import Segformer
 from transformers import AutoImageProcessor, SegformerForSemanticSegmentation
 import random
+from torchvision import models
 
+
+from transformers.modeling_outputs import SemanticSegmenterOutput
 # os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:8"
 SEED = 0
 
@@ -36,6 +41,7 @@ torch.backends.cudnn.benchmark = False
 def init_parser(parser):
     parser.add_argument('--source_path', default='./synthia', required=True, help='Path to the source dataset folder')
     parser.add_argument('--target_path', type=str, default='./cityscapes', help='path of the target data set')
+    parser.add_argument('--model_name', type=str, default="segformer") # deeplab is also possible
     parser.add_argument('--optimizer', '-o', type=str, default='Adam', help ='Optimizer to use | SGD, Adam')
     parser.add_argument('--lr', type=float, default=1.0e-5, help='learning rate')
     parser.add_argument('--weight_decay', type=float, default=0.0, help='weight decay')
@@ -52,7 +58,42 @@ def init_parser(parser):
     parser.add_argument('--gpu', type=int, default=0, help="Specify the gpu used for training")
     
     parser.add_argument('--train_print_steps', type=int, default=50, help="Specify the number of iterations between two mIoU prints during training")
-    
+
+
+def get_model_by_name(name):
+    if "segformer" in name:
+        print("Using SegFormer B5")
+        return SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b5-finetuned-ade-640-640", ignore_mismatched_sizes=True, num_labels=num_classes)
+    elif "deeplab" in name:
+        model = models.segmentation.deeplabv3_resnet101(pretrained=True)  # Oder _resnet50
+
+        model.classifier[4] = nn.Conv2d(256, num_classes, kernel_size=1)
+        if hasattr(model, "aux_classifier") and model.aux_classifier is not None:
+            model.aux_classifier[4] = nn.Conv2d(256, num_classes, kernel_size=1)
+        
+
+        print("Using DeeplabV3")
+        return model
+    else:
+        raise ValueError("Unknown model name!")
+
+def get_logits(model, data):
+    output = model(data)
+
+    # HuggingFace SegFormer
+    if isinstance(output, SemanticSegmenterOutput):
+        return output.logits
+
+    # torchvision DeepLabV3
+    if isinstance(output, dict) and 'out' in output:
+        return output['out']
+
+    # Nur Tensor zurückgegeben?
+    if isinstance(output, torch.Tensor):
+        return output
+
+    raise ValueError(f"Unbekanntes Modell-Rückgabeformat: {type(output)}")
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -64,6 +105,7 @@ def main():
     WEIGHT_AVERAGING, SKIP_VAL_SOURCE = args.weight_averaging, args.skip_val_source
     AVERAGING_INTERVAL = args.averaging_interval
     SOURCE_PATH, TARGET_PATH = args.source_path, args.target_path
+    MODEL_NAME = args.model_name
     SOURCE_DATASET_NAME, TARGET_DATASET_NAME = SOURCE_PATH.split("/")[-1].lower().strip(), TARGET_PATH.split("/")[-1].lower().strip()
     GPU = args.gpu
 
@@ -89,9 +131,9 @@ def main():
 
     # init model
     # model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b1-finetuned-ade-512-512", ignore_mismatched_sizes=True, num_labels=num_classes)
-    model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b5-finetuned-ade-640-640", ignore_mismatched_sizes=True, num_labels=num_classes)
+    
 
-
+    model = get_model_by_name(MODEL_NAME)
     model = model.to(DEVICE)
     if WEIGHT_AVERAGING:
         ema = ExponentialMovingAverage(filter(lambda p: p.requires_grad, model.parameters()), decay=DECAY_FACTOR)
@@ -143,7 +185,8 @@ def train(train_loader, model, optim, loss_fn, DEVICE, ema, PRINT_INTERVAL, AVER
             continue
         
         data, targets = data.to(DEVICE), targets.to(DEVICE).long()
-        logits = model(data).logits
+        # wrapper for handling deepLabv3 and SegFormer
+        logits = get_logits(model, data)
 
         if (data.shape[2] != targets.shape[1] or data.shape[3] != targets.shape[2]):
             print("SKIP" + str(data.shape) + str(targets.shape))
@@ -183,7 +226,7 @@ def validate(val_loader, model, DEVICE, applied_ema, dataset_name, epoch, max_ep
         data, targets = data.to(DEVICE), targets.to(DEVICE).long()
 
         with torch.no_grad():
-             output = model(data).logits
+             output = get_logits(model, data)
              output = torch.nn.functional.interpolate(output, size=utils.get_image_size(dataset_name), mode='bilinear')
         
         del data
