@@ -14,7 +14,8 @@ python trainv3.py \
   --skip_val_source false \
   --decay_factor 0.995 \
   --weight_averaging True \
-  --train_print_steps 50
+  --train_print_steps 50 \
+  --gpu 0
   ############################# 
 
 ########### SYNTHIA - DEEPLAB-V3 - SGD #########
@@ -31,7 +32,8 @@ python trainv3.py \
   --skip_val_source false \
   --decay_factor 0.995 \
   --weight_averaging True \
-  --train_print_steps 50
+  --train_print_steps 50 \
+  --gpu 0
   ############################# 
 
 ########### SYNTHIASTYLE - DEEPLAB-V3 - SGD #########
@@ -48,5 +50,7 @@ python trainv3.py \
   --skip_val_source false \
   --decay_factor 0.995 \
   --weight_averaging True \
-  --train_print_steps 50
+  --train_print_steps 50 \
+  --gpu 0
   ############################# 
+
