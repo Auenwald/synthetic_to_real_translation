@@ -3,6 +3,7 @@
 # (2) Run the conversion script from <url> in order to get synthia-style
 
 # (3) The following directory structure is necessary
+```plaintext
 synthiastyle
 ├── GT
 │   └── LABELS
