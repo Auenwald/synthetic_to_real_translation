@@ -10,31 +10,6 @@ import imageio
 num_classes = 16
 ignore_label = 255
 
-# trainid_to_trainid = {
-#         0: ignore_label,  # void
-#         1: 10,            # sky
-#         2: 2,             # building
-#         3: 0,             # road
-#         4: 1,             # sidewalk
-#         5: 4,             # fence
-#         6: 8,             # vegetation
-#         7: 5,             # pole
-#         8: 13,            # car
-#         9: 7,             # traffic sign
-#         10: 11,           # pedestrian - person
-#         11: 18,           # bicycle
-#         12: 17,           # motorcycle
-#         13: ignore_label, # parking-slot
-#         14: ignore_label, # road-work
-#         15: 6,            # traffic light
-#         16: 9,            # terrain - not present!
-#         17: 12,           # rider
-#         18: 14,           # truck - not present!
-#         19: 15,           # bus
-#         20: 16,           # train - - not present!
-#         21: 3,            # wall
-#         22: ignore_label  # Lanemarking
-#         }
 
 
 trainid_to_trainid = {
@@ -85,10 +60,10 @@ def colorize_mask(mask):
     return new_mask
 
 
-class Synthia(Dataset):
+class SynthiaStyle(Dataset):
     def __init__(self, root_dir, split='train', transform=None):
         self.root_dir = root_dir
-        self.images = sorted(glob.glob(f'{root_dir}/RGB/*.png'))
+        self.images = sorted(glob.glob(f'{root_dir}/Style/*.png'))
         self.masks = sorted(glob.glob(f'{root_dir}/GT/LABELS/*.png'))
 
         self.num_classes = 16
@@ -120,7 +95,6 @@ class Synthia(Dataset):
             mask_copy[mask == k] = v
 
         mask = mask_copy
-        # mask = np.array(Image.fromarray(mask_copy.astype(np.uint8)))
 
         # albumentations
         

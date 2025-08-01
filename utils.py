@@ -4,21 +4,24 @@ from albumentations.pytorch import ToTensorV2
 from torch.utils.data import DataLoader, Dataset
 from dataset_cityscapes import *
 from dataset_synthia import *
+from dataset_synthia_style import *
 from dataset_bdd import *
 from dataset_gta5 import *
 
 def get_augmentation(dataset_name, split):
-    if dataset_name == 'synthia':
+    dataset_name = dataset_name.lower()
+
+    if 'synthia' in dataset_name:
         if split == 'train':
             return A.Compose([
                 # A.HorizontalFlip(p=0.5),
                 # A.Blur(blur_limit=(3, 7), p=0.5),
                 # A.RandomBrightnessContrast(p=0.2),
-                A.RandomBrightnessContrast(brightness_limit=1, contrast_limit=1, p=0.5),
+                # A.RandomBrightnessContrast(brightness_limit=1, contrast_limit=1, p=0.5),
                 # A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.5),
                 # A.RandomRotate90(p=0.5),
-                # A.Resize(380, 640),
-                A.RandomCrop(width=640, height=380),
+                A.Resize(380, 640),
+                # A.RandomCrop(width=640, height=380),
                 # A.RandomCrop(width=256, height=256),
                 # A.RandomCrop(width=WIDTH, height=HEIGHT),
                 # A.Resize(512, 1024),
@@ -87,6 +90,13 @@ def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle):
     elif "bdd" in dataset_name:
         print("Use bdd as the target dataset")
         dataset = BDD(path, split='val', transform=get_augmentation('bdd', ''))
+
+    elif "synthiastyle" in dataset_name:
+        print("Use synthia-style as the source dataset")
+        if split == "train":
+            dataset = SynthiaStyle(root_dir=path, split='train', transform=get_augmentation('synthia', 'train'))
+        else:
+            dataset = SynthiaStyle(root_dir=path, split='val', transform=get_augmentation('synthia', 'val'))
 
     elif "synthia" in dataset_name:
         print("Use synthia as the source dataset")
