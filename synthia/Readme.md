@@ -1,7 +1,13 @@
-# (1) Download the SYNTHIA-Dataset 
+# 🧠 SYNTHIA Dataset Setup Guide
+
+This guide explains how to download, extract, and organize the **SYNTHIA-RAND-CITYSCAPES** and **synthiastyle** datasets for semantic segmentation tasks.
+
+---
+
+### 📥 (1) Download the SYNTHIA Dataset
+
 ```bash
 wget --no-check-certificate http://synthia-dataset.cvc.uab.cat/SYNTHIA_RAND_CITYSCAPES.rar
-
 # (2) For Ubuntu, maybe the rar package is missiong
 $sudo apt-get install rar
 
