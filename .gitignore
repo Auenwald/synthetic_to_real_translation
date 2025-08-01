@@ -1,7 +1,6 @@
-cityscapes/
-synthia/
-synthiastyle/
+*.png
+*.jpg
+*.json
 venv
 logs_final/*.txt
-
 __pycache__
