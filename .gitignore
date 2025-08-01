@@ -2,5 +2,6 @@ cityscapes/
 synthia/
 synthiastyle/
 venv
-logs_final/
+logs_final/*.txt
+
 __pycache__
