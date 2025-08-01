@@ -4,6 +4,6 @@
 
 # (3) The following directory structure is necessary
 synthiastyle
-    - GT
-        - LABELS
-    - RGB
+├── GT
+│   └── LABELS
+└── RGB

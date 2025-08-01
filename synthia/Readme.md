@@ -10,9 +10,9 @@ $ unrar x SYNTHIA_RAND_CITYSCAPES.rar
 # (4) the following directory structure is necessary
 
 synthia
-    - Depth 
-        - Depth 
-    - GT
-        - COLOR
-        - LABELS
-    - RGB
+    ├── Depth
+    │     └── Depth
+    ├── GT
+    │     ├── COLOR
+    │     └── LABELS
+    └── RGB
