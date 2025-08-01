@@ -3,9 +3,9 @@ import torch.optim
 import os
 import argparse
 from torch.utils.data import DataLoader, Dataset
-from dataset_cityscapes import *
-from dataset_synthia import *
-from dataset_bdd import *
+from datasets.dataset_cityscapes import *
+from datasets.dataset_synthia import *
+from datasets.dataset_bdd import *
 import segmentation_models_pytorch as smp
 import numpy as np
 import utils 

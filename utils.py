@@ -2,11 +2,11 @@ import numpy as np
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from torch.utils.data import DataLoader, Dataset
-from dataset_cityscapes import *
-from dataset_synthia import *
-from dataset_synthia_style import *
-from dataset_bdd import *
-from dataset_gta5 import *
+from datasets.dataset_cityscapes import *
+from datasets.dataset_synthia import *
+from datasets.dataset_synthia_style import *
+from datasets.dataset_bdd import *
+from datasets.dataset_gta5 import *
 
 def get_augmentation(dataset_name, split):
     dataset_name = dataset_name.lower()

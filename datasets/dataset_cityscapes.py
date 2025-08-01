@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 # from utils import utils
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
-import cityscapes_shared_labels as cityscapes_labels
+import datasets.cityscapes_shared_labels as cityscapes_labels
 
 
 trainid_to_name = cityscapes_labels.trainId2name
