@@ -1,5 +1,6 @@
 # (1) Download the SYNTHIA-Dataset 
-$ wget --no-check-certificate http://synthia-dataset.cvc.uab.cat/SYNTHIA_RAND_CITYSCAPES.rar
+```bash
+wget --no-check-certificate http://synthia-dataset.cvc.uab.cat/SYNTHIA_RAND_CITYSCAPES.rar
 
 # (2) For Ubuntu, maybe the rar package is missiong
 $sudo apt-get install rar
@@ -9,6 +10,7 @@ $ unrar x SYNTHIA_RAND_CITYSCAPES.rar
 
 # (4) the following directory structure is necessary
 
+```plaintext
 synthia
     ├── Depth
     │     └── Depth
