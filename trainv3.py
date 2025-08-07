@@ -8,7 +8,6 @@ from datasets.dataset_cityscapes import *
 from datasets.dataset_synthia import *
 from datasets.dataset_synthia_style import *
 from datasets.dataset_bdd import *
-import segmentation_models_pytorch as smp
 import numpy as np
 import utils 
 from torch_ema import ExponentialMovingAverage
