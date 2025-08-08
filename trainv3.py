@@ -63,7 +63,7 @@ def init_parser(parser):
 
 
 def get_model_by_name(name):
-    if "segformer" in name:
+    if "segformer" in name.lower():
         print("Using SegFormer B5")
 
         backbone = SegformerModel.from_pretrained('nvidia/segformer-b5')
@@ -74,8 +74,8 @@ def get_model_by_name(name):
 
         # pretrained on Ade20k: SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b5-finetuned-ade-640-640", ignore_mismatched_sizes=True, num_labels=num_classes)
 
-        return SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b5-finetuned-ade-640-640", ignore_mismatched_sizes=True, num_labels=num_classes)
-    elif "deeplab" in name:
+        return model
+    elif "deeplab" in name.lower():
         print("Using DeeplabV3")
         backbone = resnet101(weights=ResNet101_Weights.IMAGENET1K_V1)
         model = models.segmentation.deeplabv3_resnet101(weights=None, backbone=backbone) 
