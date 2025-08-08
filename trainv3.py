@@ -66,9 +66,6 @@ def get_model_by_name(name):
     if "segformer" in name.lower():
         print("Using SegFormer B5")
 
-        # backbone = SegformerModel.from_pretrained('nvidia/segformer-b5')
-        # config = SegformerConfig.from_pretrained('nvidia/segformer-b5', num_labels=num_classes)
-        
         backbone = SegformerModel.from_pretrained('nvidia/mit-b5')
         config = SegformerConfig.from_pretrained('nvidia/mit-b5', num_labels=num_classes)
         

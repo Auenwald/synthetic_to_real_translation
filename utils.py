@@ -7,6 +7,7 @@ from datasets.dataset_synthia import *
 from datasets.dataset_synthia_style import *
 from datasets.dataset_bdd import *
 from datasets.dataset_gta5 import *
+from advanced_augmentations import *
 
 def get_augmentation(dataset_name, split):
     dataset_name = dataset_name.lower()
@@ -16,8 +17,11 @@ def get_augmentation(dataset_name, split):
             return A.Compose([
                 # A.HorizontalFlip(p=0.5),
                 # A.Blur(blur_limit=(3, 7), p=0.5),
-                # A.RandomBrightnessContrast(p=0.2),
                 #A.RandomBrightnessContrast(brightness_limit=(-0.2, 0.5), contrast_limit=0.5, p=0.5),
+
+                A.OneOf([local_brightness, global_brightness, local_light_spot], p=1.0),
+
+
                 # A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.5),
                 # A.RandomRotate90(p=0.5),
                 A.Resize(380, 640),
