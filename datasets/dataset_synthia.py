@@ -97,14 +97,14 @@ class Synthia(Dataset):
         self.transform = transform
         
         if self.split == 'train':
-            self.images = self.images[0:7700]
-            self.masks = self.masks[0:7700]
+            self.images = self.images[0:8000]
+            self.masks = self.masks[0:8000]
         elif self.split == 'val':
-            self.images = self.images[7700:7700+700]
-            self.masks = self.masks[7700:7700+700]
+            self.images = self.images[8000:8000+700]
+            self.masks = self.masks[8000:8000+700]
         else:
-            self.images = self.images[7700+700:7700+700+700]
-            self.masks = self.masks[7700+700:7700+700+700]
+            self.images = self.images[8000+700:]
+            self.masks = self.masks[8000+700:]
 
     def __getitem__(self, index):
 
