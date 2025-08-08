@@ -72,7 +72,7 @@ class SynthiaStyle(Dataset):
 
         self.split = split
         self.transform = transform
-        self.use_synthia_shapes = use_synthia_shapes=False
+        self.use_synthia_shapes = use_synthia_shapes
         
         if self.split == 'train':
             self.images = self.images[0:8000]
