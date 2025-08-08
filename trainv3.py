@@ -244,36 +244,19 @@ def validate(val_loader, model, DEVICE, applied_ema, dataset_name, epoch, max_ep
             print(f'{logging_text} Progress: {idx}/{len(val_loader)}, mean-IoU: {mean_iou:.2f}')
             scores[dataset_name][epoch].append(round(mean_iou.item(), 3))
 
-        # logging_text = f'[val-{dataset_name}{"-ema" if applied_ema else ""}] - Epoch: {epoch}/{max_epochs}'
-        # print(f'{logging_text} Progress: {idx}/{len(val_loader)}, mean-IoU: {mean_iou:.2f}')
-        # scores[f'{dataset_name}{"-ema" if applied_ema else ""}'][epoch].append(round(mean_iou.item(), 3))
-
-
 
 def write_scores_to_log_file(LOG_PATH, epoch, APPLY_AVERAGING, SOURCE_DATASET_NAME, TARGET_DATASET_NAME):
 
+    datasets_to_log = [TARGET_DATASET_NAME, SOURCE_DATASET_NAME]
+
+    if APPLY_AVERAGING:
+        datasets_to_log += [f'{TARGET_DATASET_NAME}-ema', f'{SOURCE_DATASET_NAME}-ema']
+
     with open(LOG_PATH, 'a') as f:
-        f.write(f'{TARGET_DATASET_NAME} ' + str(epoch) + " ")
-        for mean_IoU in scores[f'{TARGET_DATASET_NAME}'][epoch]:
-            f.write(str(mean_IoU) + " ")
-        f.write('\n')
-
-        f.write(f'{SOURCE_DATASET_NAME} ' + str(epoch) + " ")
-        for mean_IoU in scores[SOURCE_DATASET_NAME][epoch]:
-            f.write(str(mean_IoU) + " ")
-        f.write('\n')
-
-        if APPLY_AVERAGING:
-            f.write(f'{TARGET_DATASET_NAME}-ema ' + str(epoch) + " ")
-            for mean_IoU in scores[f'{TARGET_DATASET_NAME}-ema'][epoch]:
-                f.write(str(mean_IoU) + " ")
-            f.write('\n')
-
-            f.write(f'{SOURCE_DATASET_NAME}-ema ' + str(epoch) + " ")
-            for mean_IoU in scores[f'{SOURCE_DATASET_NAME}-ema'][epoch]:
-                f.write(str(mean_IoU) + " ")
-            f.write('\n')
-
+        for dataset_key in datasets_to_log:
+            scores_for_epoch = scores[dataset_key][epoch]
+            line = f"{dataset_key} {epoch} " + " ".join(str(iou) for iou in scores_for_epoch) + "\n"
+            f.write(line)
     
 if __name__ == '__main__':
     main()
