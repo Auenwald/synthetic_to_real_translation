@@ -62,16 +62,17 @@ def colorize_mask(mask):
 
 
 class SynthiaStyle(Dataset):
-    def __init__(self, root_dir, split='train', transform=None):
+    def __init__(self, root_dir, split='train', transform=None, use_synthia_shapes=False):
         self.root_dir = root_dir
         self.images = sorted(glob.glob(f'{root_dir}/Style/*.png'))
-        self.masks = sorted(glob.glob(f'{root_dir}/../synthia/GT/LABELS/*.png'))
+        self.shapes = sorted(glob.glob(f'{root_dir}/../synthia/GT/LABELS/*.png'))
         self.masks = sorted(glob.glob(f'{root_dir}/GT/LABELS/*.png'))
 
         self.num_classes = 16
 
         self.split = split
         self.transform = transform
+        self.use_synthia_shapes = use_synthia_shapes=False
         
         if self.split == 'train':
             self.images = self.images[0:8000]
@@ -92,7 +93,7 @@ class SynthiaStyle(Dataset):
             img = Image.open(self.shapes[index]).convert('RGB')
         else:
             img = Image.open(self.images[index]).convert('RGB')
-            
+
         # maybe necessary to install imageio plugins via: imageio.plugins.freeimage.download()
         mask = np.asarray(imageio.imread(self.masks[index], format='PNG-FI'))[:, :, 0]
         img = np.array(img)
