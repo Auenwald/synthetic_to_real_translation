@@ -5,6 +5,7 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import numpy as np
 import imageio
+import random
 
 # num_classes = 19
 num_classes = 16
@@ -64,6 +65,7 @@ class SynthiaStyle(Dataset):
     def __init__(self, root_dir, split='train', transform=None):
         self.root_dir = root_dir
         self.images = sorted(glob.glob(f'{root_dir}/Style/*.png'))
+        self.masks = sorted(glob.glob(f'{root_dir}/../synthia/GT/LABELS/*.png'))
         self.masks = sorted(glob.glob(f'{root_dir}/GT/LABELS/*.png'))
 
         self.num_classes = 16
@@ -73,17 +75,24 @@ class SynthiaStyle(Dataset):
         
         if self.split == 'train':
             self.images = self.images[0:8000]
+            self.shapes = self.shapes[0:8000]
             self.masks = self.masks[0:8000]
         elif self.split == 'val':
             self.images = self.images[8000:8000+700]
+            self.shapes = self.shapes[8000:8000+700]
             self.masks = self.masks[8000:8000+700]
         else:
             self.images = self.images[8000+700:]
+            self.shapes = self.shapes[8000+700:]
             self.masks = self.masks[8000+700:]
 
     def __getitem__(self, index):
 
-        img = Image.open(self.images[index]).convert('RGB')
+        if self.use_synthia_shapes and random.random() < 0.5:
+            img = Image.open(self.shapes[index]).convert('RGB')
+        else:
+            img = Image.open(self.images[index]).convert('RGB')
+            
         # maybe necessary to install imageio plugins via: imageio.plugins.freeimage.download()
         mask = np.asarray(imageio.imread(self.masks[index], format='PNG-FI'))[:, :, 0]
         img = np.array(img)

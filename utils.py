@@ -86,7 +86,7 @@ def get_augmentation(dataset_name, split):
     ])
 
 
-def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle):
+def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, use_synthia_shapes=False):
     if "cityscapes" in dataset_name:
         print("Use cityscapes as the target dataset")
         dataset = CityScapes(path, split='val', transform=get_augmentation('cityscapes', ''))
@@ -97,14 +97,14 @@ def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle):
     elif "synthiastyle" in dataset_name:
         print("Use synthia-style as the source dataset")
         if split == "train":
-            dataset = SynthiaStyle(root_dir=path, split='train', transform=get_augmentation('synthia', 'train'))
+            dataset = SynthiaStyle(root_dir=path, split='train', transform=get_augmentation('synthia', 'train'), use_synthia_shapes=use_synthia_shapes)
         else:
             dataset = SynthiaStyle(root_dir=path, split='val', transform=get_augmentation('synthia', 'val'))
 
     elif "synthia" in dataset_name:
         print("Use synthia as the source dataset")
         if split == "train":
-            dataset = Synthia(root_dir=path, split='train', transform=get_augmentation('synthia', 'train'))
+            dataset = Synthia(root_dir=path, split='train', transform=get_augmentation('synthia', 'train'), use_synthia_shapes=use_synthia_shapes)
         else:
             dataset = Synthia(root_dir=path, split='val', transform=get_augmentation('synthia', 'val'))
     elif "gta5" in dataset_name:

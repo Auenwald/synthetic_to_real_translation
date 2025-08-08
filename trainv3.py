@@ -58,7 +58,7 @@ def init_parser(parser):
     parser.add_argument('--decay_factor', type=float, default=0.999, help='Specify the decay factor that is used in EMA')
     # parser.add_argument('--resume', type=bool, default=False, help='start from an existing checkpoint')
     parser.add_argument('--gpu', type=int, default=0, help="Specify the gpu used for training")
-    
+    parser.add_argument('--use_synthia_shapes', type=lambda x: x == 'True', default=False)
     parser.add_argument('--train_print_steps', type=int, default=50, help="Specify the number of iterations between two mIoU prints during training")
 
 
@@ -121,6 +121,7 @@ def main():
     MODEL_NAME = args.model_name
     SOURCE_DATASET_NAME, TARGET_DATASET_NAME = SOURCE_PATH.split("/")[-1].lower().strip(), TARGET_PATH.split("/")[-1].lower().strip()
     GPU = args.gpu
+    USE_SYNTHIA_SHAPES = args.use_synthia_shapes
 
     USE_LOGGING, LOG_PATH = args.use_logging, args.log_file
     PRINT_INTERVAL = args.train_print_steps
@@ -134,7 +135,7 @@ def main():
     scores[SOURCE_DATASET_NAME], scores[SOURCE_DATASET_NAME + "-ema"] = {}, {}
 
     # define the dataloader
-    source_train_data_loader = utils.get_dataloader_from_dataset(SOURCE_PATH, SOURCE_DATASET_NAME, 'train', batch_size=BATCH_SIZE, shuffle=True)
+    source_train_data_loader = utils.get_dataloader_from_dataset(SOURCE_PATH, SOURCE_DATASET_NAME, 'train', batch_size=BATCH_SIZE, shuffle=True, use_synthia_shapes=USE_SYNTHIA_SHAPES)
     source_val_data_loader = utils.get_dataloader_from_dataset(SOURCE_PATH, SOURCE_DATASET_NAME, 'val', batch_size=1, shuffle=False)
 
     target_val_data_loader = utils.get_dataloader_from_dataset(TARGET_PATH, TARGET_DATASET_NAME, 'val', batch_size=1, shuffle=False)
