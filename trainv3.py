@@ -13,10 +13,13 @@ import utils
 from torch_ema import ExponentialMovingAverage
 import pytorch_warmup as  warmup
 from torchvision.models.segmentation.deeplabv3 import DeepLabHead
+from torchvision.models.segmentation import deeplabv3_resnet101
+from torchvision.models import resnet101, ResNet101_Weights
+
 # import torchmetrics
 from torchmetrics.functional import jaccard_index
 from segformer_pytorch import Segformer
-from transformers import AutoImageProcessor, SegformerForSemanticSegmentation
+from transformers import SegformerModel, SegformerConfig, SegformerForSemanticSegmentation
 import random
 from torchvision import models
 
@@ -62,16 +65,26 @@ def init_parser(parser):
 def get_model_by_name(name):
     if "segformer" in name:
         print("Using SegFormer B5")
+
+        backbone = SegformerModel.from_pretrained('nvidia/segformer-b5')
+        config = SegformerConfig.from_pretrained('nvidia/segformer-b5', num_classes=num_classes)
+        model = SegformerForSemanticSegmentation(config)
+        model.segformer.load_state_dict(backbone.state_dict(), strict=False)
+
+
+        # pretrained on Ade20k: SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b5-finetuned-ade-640-640", ignore_mismatched_sizes=True, num_labels=num_classes)
+
         return SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b5-finetuned-ade-640-640", ignore_mismatched_sizes=True, num_labels=num_classes)
     elif "deeplab" in name:
-        model = models.segmentation.deeplabv3_resnet101(pretrained=True)  # Oder _resnet50
-
+        print("Using DeeplabV3")
+        backbone = resnet101(weights=ResNet101_Weights.IMAGENET1K_V1)
+        model = models.segmentation.deeplabv3_resnet101(weights=None, backbone=backbone) 
         model.classifier[4] = nn.Conv2d(256, num_classes, kernel_size=1)
+
         if hasattr(model, "aux_classifier") and model.aux_classifier is not None:
             model.aux_classifier[4] = nn.Conv2d(256, num_classes, kernel_size=1)
         
 
-        print("Using DeeplabV3")
         return model
     else:
         raise ValueError("Unknown model name!")
