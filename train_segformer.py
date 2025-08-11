@@ -159,8 +159,48 @@ def main():
     elif args.optimizer.lower() == 'adam':
         optim = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=LR, weight_decay=WEIGHT_DECAY)
     elif args.optimizer.lower() == 'adamw':
-        optim = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=LR, weight_decay=WEIGHT_DECAY)    
+        print("using AdamW")
+        backbone_params = []
+        decoder_params = []
+        norm_and_bias_params = []
 
+        # Hilfsmengen, um Parameter zu tracken und Duplikate zu vermeiden
+        seen = set()
+
+        for name, param in model.named_parameters():
+            if not param.requires_grad:
+                continue
+
+            if "norm" in name.lower() or "bias" in name.lower():
+                if param not in seen:
+                    norm_and_bias_params.append(param)
+                    seen.add(param)
+            elif "segformer" in name.lower():
+                if param not in seen:
+                    backbone_params.append(param)
+                    seen.add(param)
+            elif "decode_head" in name.lower():
+                if param not in seen:
+                    decoder_params.append(param)
+                    seen.add(param)
+            else:
+                if param not in seen:
+                    backbone_params.append(param)
+                    seen.add(param)
+
+        total_params = len(seen)
+        print(f"Einzigartige Parameter: {total_params}")
+        print(f"Backbone: {len(backbone_params)}; Decoder: {len(decoder_params)}; Norm&Bias: {len(norm_and_bias_params)}")
+
+        optim = torch.optim.AdamW(
+            [
+                {"params": backbone_params, "lr": 5e-5, "weight_decay": 0.01},
+                {"params": decoder_params, "lr": 5e-4, "weight_decay": 0.01},
+                {"params": norm_and_bias_params, "lr": 5e-5, "weight_decay": 0.0}
+            ],
+            betas=(0.9, 0.999),
+            eps=1e-8
+        )
 
     loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
 

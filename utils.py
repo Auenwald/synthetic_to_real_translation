@@ -21,7 +21,6 @@ def get_augmentation(dataset_name, split):
 
                 A.OneOf([local_brightness, global_brightness, local_light_spot], p=1.0),
 
-
                 # A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.5),
                 # A.RandomRotate90(p=0.5),
                 A.Resize(380, 640),
