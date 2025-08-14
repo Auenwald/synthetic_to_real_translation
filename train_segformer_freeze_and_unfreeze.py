@@ -145,17 +145,27 @@ def main():
 
     # init model
     # model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b1-finetuned-ade-512-512", ignore_mismatched_sizes=True, num_labels=num_classes)
-    
 
     model = get_model_by_name(MODEL_NAME)
     model = model.to(DEVICE)
-   
+
+
+    for param in model.segformer.parameters():
+            param.requires_grad = False
+
+    for param in model.decode_head.parameters():
+        param.requires_grad = True
+
+    params = [param for param in model.parameters() if param.requires_grad]
+
+    unfreeze_epoch = 10
+
     if args.optimizer.lower() == 'sgd': 
-        optim = torch.optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), lr=LR, momentum=0.9, weight_decay=WEIGHT_DECAY)
+        optim = torch.optim.SGD(params, lr=LR, momentum=0.9, weight_decay=WEIGHT_DECAY)
     elif args.optimizer.lower() == 'adam':
-        optim = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=LR, weight_decay=WEIGHT_DECAY)
+        optim = torch.optim.Adam(params, lr=LR, weight_decay=WEIGHT_DECAY)
     elif args.optimizer.lower() == 'adamw':
-        optim = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=LR, weight_decay=WEIGHT_DECAY)    
+        optim = torch.optim.AdamW(params, lr=LR, weight_decay=WEIGHT_DECAY)    
 
     if WEIGHT_AVERAGING:
         ema = ExponentialMovingAverage(filter(lambda p: p.requires_grad, model.parameters()), decay=DECAY_FACTOR)
@@ -165,6 +175,26 @@ def main():
     loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
 
     for epoch in range(1 + epoch_modifier, EPOCHS + 1 + epoch_modifier):
+
+        encoder_params = []
+        decoder_params = []
+        if epoch == unfreeze_epoch:
+            for param in model.segformer.parameters():
+                param.requires_grad = True
+                encoder_params.append(param)
+
+            for param in model.decode_head.parameters():
+                decoder_params.append(param)
+
+            optim = torch.optim.AdamW([
+                {"params": encoder_params, "lr": LR * 0.1, "weight_decay": WEIGHT_DECAY},
+                {"params": decoder_params, "lr": LR, "weight_decay": WEIGHT_DECAY}
+             ])
+
+            if WEIGHT_AVERAGING:
+                ema = ExponentialMovingAverage(filter(lambda p: p.requires_grad, model.parameters()), decay=DECAY_FACTOR)
+            else:
+                ema = None
          
         scores[TARGET_DATASET_NAME][epoch] = []
         scores[TARGET_DATASET_NAME + "-ema"][epoch] = []
@@ -193,6 +223,8 @@ def main():
 
 def train(train_loader, model, optim, loss_fn, DEVICE, ema, PRINT_INTERVAL, AVERAGING_INTERVAL, SOURCE_DATASET_NAME):
     model.train()
+
+
     for i, (data, targets) in enumerate(train_loader):
             
         if data is None or targets is None:

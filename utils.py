@@ -14,22 +14,30 @@ def get_augmentation(dataset_name, split):
 
     if 'synthia' in dataset_name:
         if split == 'train':
+            # return A.Compose([
+            #     # A.HorizontalFlip(p=0.5),
+            #     # A.Blur(blur_limit=(3, 7), p=0.5),
+            #     #A.RandomBrightnessContrast(brightness_limit=(-0.2, 0.5), contrast_limit=0.5, p=0.5),
+
+            #     A.OneOf([local_brightness, global_brightness, local_light_spot], p=1.0),
+
+            #     # A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.5),
+            #     # A.RandomRotate90(p=0.5),
+            #     A.Resize(380, 640),
+            #     # A.RandomCrop(width=640, height=380),
+            #     # A.RandomCrop(width=WIDTH, height=HEIGHT),
+            #     # A.Resize(512, 1024),
+            #     A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            #     ToTensorV2(),
+            # ]) 
+        
             return A.Compose([
-                # A.HorizontalFlip(p=0.5),
-                # A.Blur(blur_limit=(3, 7), p=0.5),
-                #A.RandomBrightnessContrast(brightness_limit=(-0.2, 0.5), contrast_limit=0.5, p=0.5),
-
-                A.OneOf([local_brightness, global_brightness, local_light_spot], p=1.0),
-
-                # A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.5),
-                # A.RandomRotate90(p=0.5),
-                A.Resize(380, 640),
-                # A.RandomCrop(width=640, height=380),
-                # A.RandomCrop(width=WIDTH, height=HEIGHT),
-                # A.Resize(512, 1024),
-                A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-                ToTensorV2(),
-            ]) 
+                    A.Resize(380, 640),
+                    A.OneOf([local_brightness, global_brightness, local_light_spot], p=0.8),
+                    A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                    ToTensorV2(),
+            ])
+        
         else:
             return A.Compose(
             [

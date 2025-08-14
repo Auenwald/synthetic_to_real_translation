@@ -149,18 +149,19 @@ def main():
 
     model = get_model_by_name(MODEL_NAME)
     model = model.to(DEVICE)
-   
+    if WEIGHT_AVERAGING:
+        ema = ExponentialMovingAverage(filter(lambda p: p.requires_grad, model.parameters()), decay=DECAY_FACTOR)
+    else:
+        ema = None
+
     if args.optimizer.lower() == 'sgd': 
         optim = torch.optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), lr=LR, momentum=0.9, weight_decay=WEIGHT_DECAY)
     elif args.optimizer.lower() == 'adam':
         optim = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=LR, weight_decay=WEIGHT_DECAY)
     elif args.optimizer.lower() == 'adamw':
-        optim = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=LR, weight_decay=WEIGHT_DECAY)    
-
-    if WEIGHT_AVERAGING:
-        ema = ExponentialMovingAverage(filter(lambda p: p.requires_grad, model.parameters()), decay=DECAY_FACTOR)
-    else:
-        ema = None
+        optim = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=LR, weight_decay=WEIGHT_DECAY) 
+        print("using AdamW")
+        
 
     loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
 
