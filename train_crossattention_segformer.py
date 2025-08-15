@@ -28,6 +28,7 @@ from transformers.modeling_outputs import SemanticSegmenterOutput
 # os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:8"
 
 import torch.nn.functional as F
+import kornia
 
 def sobel_edges(images):
     # images: [B, 3, H, W] -> Graustufen + Sobel
@@ -38,6 +39,33 @@ def sobel_edges(images):
     grad_y = F.conv2d(gray, kernel_y, padding=1)
     edges = torch.sqrt(grad_x**2 + grad_y**2)
     edges = edges / (edges.max(dim=2, keepdim=True)[0].max(dim=3, keepdim=True)[0] + 1e-6)  # normalize per image
+    return edges
+
+def multiscale_scharr_edges(images, sigmas=(0.5, 1.0, 2.0)):
+    # images: [B, 3, H, W]
+    device = images.device
+    gray = images.mean(dim=1, keepdim=True)  # [B,1,H,W]
+    
+    # Scharr-Kernel
+    kernel_x = torch.tensor([[3, 0, -3],
+                             [10, 0, -10],
+                             [3, 0, -3]], dtype=torch.float32, device=device).view(1,1,3,3)
+    kernel_y = torch.tensor([[3, 10, 3],
+                             [0, 0, 0],
+                             [-3, -10, -3]], dtype=torch.float32, device=device).view(1,1,3,3)
+    
+    edges_multi = []
+    for s in sigmas:
+        blurred = kornia.filters.gaussian_blur2d(gray, (5, 5), (s, s))
+        grad_x = F.conv2d(blurred, kernel_x, padding=1)
+        grad_y = F.conv2d(blurred, kernel_y, padding=1)
+        edges_multi.append(torch.sqrt(grad_x**2 + grad_y**2))
+    
+    # Max-Pooling über Skalen
+    edges = torch.max(torch.stack(edges_multi, dim=0), dim=0)[0]
+    
+    # Normierung pro Bild
+    edges = edges / (edges.amax(dim=(2, 3), keepdim=True) + 1e-6)
     return edges
 
 class MultiHeadCrossAttention(nn.Module):
@@ -97,7 +125,7 @@ class SegformerCrossAttentionWrapper(nn.Module):
 
     def forward(self, image_rgb, labels=None):
 
-        edge_map = sobel_edges(image_rgb)
+        edge_map = multiscale_scharr_edges(image_rgb)
 
         # RGB hidden states
         rgb_outputs = self.encoder_rgb(image_rgb, output_hidden_states=True)
