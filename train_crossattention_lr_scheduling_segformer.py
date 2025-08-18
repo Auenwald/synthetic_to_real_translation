@@ -9,7 +9,7 @@ from datasets.dataset_synthia import *
 from datasets.dataset_synthia_style import *
 from datasets.dataset_bdd import *
 import numpy as np
-import utils 
+import utils
 from torch_ema import ExponentialMovingAverage
 import pytorch_warmup as  warmup
 from torchvision.models.segmentation.deeplabv3 import DeepLabHead
@@ -23,13 +23,12 @@ from transformers import SegformerModel, SegformerConfig, SegformerForSemanticSe
 import random
 from torchvision import models
 from torch.cuda.amp import autocast
-
+from losses import CombinedLoss
 from transformers.modeling_outputs import SemanticSegmenterOutput
 from torch.optim.lr_scheduler import CosineAnnealingLR, LambdaLR
 # os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:8"
-
 import torch.nn.functional as F
-import kornia
+
 
 def get_optimizer_and_scheduler(model, optimizer_name='adamw', lr=1e-5, total_steps=10000, warmup_steps=500):
     """
@@ -83,43 +82,6 @@ def get_optimizer_and_scheduler(model, optimizer_name='adamw', lr=1e-5, total_st
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     return optimizer, scheduler
 
-def sobel_edges(images):
-    # images: [B, 3, H, W] -> Graustufen + Sobel
-    gray = images.mean(dim=1, keepdim=True)  # [B,1,H,W]
-    kernel_x = torch.tensor([[1,0,-1],[2,0,-2],[1,0,-1]], dtype=torch.float32, device=images.device).view(1,1,3,3)
-    kernel_y = torch.tensor([[1,2,1],[0,0,0],[-1,-2,-1]], dtype=torch.float32, device=images.device).view(1,1,3,3)
-    grad_x = F.conv2d(gray, kernel_x, padding=1)
-    grad_y = F.conv2d(gray, kernel_y, padding=1)
-    edges = torch.sqrt(grad_x**2 + grad_y**2)
-    edges = edges / (edges.max(dim=2, keepdim=True)[0].max(dim=3, keepdim=True)[0] + 1e-6)  # normalize per image
-    return edges
-
-def multiscale_scharr_edges(images, sigmas=(0.5, 1.0, 2.0)):
-    # images: [B, 3, H, W]
-    device = images.device
-    gray = images.mean(dim=1, keepdim=True)  # [B,1,H,W]
-    
-    # Scharr-Kernel
-    kernel_x = torch.tensor([[3, 0, -3],
-                             [10, 0, -10],
-                             [3, 0, -3]], dtype=torch.float32, device=device).view(1,1,3,3)
-    kernel_y = torch.tensor([[3, 10, 3],
-                             [0, 0, 0],
-                             [-3, -10, -3]], dtype=torch.float32, device=device).view(1,1,3,3)
-    
-    edges_multi = []
-    for s in sigmas:
-        blurred = kornia.filters.gaussian_blur2d(gray, (5, 5), (s, s))
-        grad_x = F.conv2d(blurred, kernel_x, padding=1)
-        grad_y = F.conv2d(blurred, kernel_y, padding=1)
-        edges_multi.append(torch.sqrt(grad_x**2 + grad_y**2))
-    
-    # Max-Pooling über Skalen
-    edges = torch.max(torch.stack(edges_multi, dim=0), dim=0)[0]
-    
-    # Normierung pro Bild
-    edges = edges / (edges.amax(dim=(2, 3), keepdim=True) + 1e-6)
-    return edges
 
 class MultiHeadCrossAttention(nn.Module):
     def __init__(self, in_dim, attn_dim=128, num_heads=4):
@@ -174,11 +136,16 @@ class SegformerCrossAttentionWrapper(nn.Module):
             for c, d in zip(config.hidden_sizes, cross_attn_dims)
         ])
 
+        self.alpha_logits = nn.ParameterList([
+            nn.Parameter(torch.tensor(-0.2, dtype=torch.float32))
+            for _ in range(len(config.hidden_sizes))
+        ])
+
         self.downsample_factor = downsample_factor
 
     def forward(self, image_rgb, labels=None):
 
-        edge_map = multiscale_scharr_edges(image_rgb)
+        edge_map = utils.multiscale_scharr_edges(image_rgb)
 
         # RGB hidden states
         rgb_outputs = self.encoder_rgb(image_rgb, output_hidden_states=True)
@@ -201,7 +168,9 @@ class SegformerCrossAttentionWrapper(nn.Module):
             edge_flat = edge_small.flatten(2).transpose(1, 2)
 
             # Cross-Attention
-            fused = rgb_flat + self.cross_attn_layers[i](rgb_flat, edge_flat)
+            attn_out = self.cross_attn_layers[i](rgb_flat, edge_flat)
+            alpha = torch.sigmoid(self.alpha_logits[i])
+            fused = rgb_flat + alpha * attn_out
 
             # Zurück auf Originalgröße
             fused = fused.transpose(1, 2).view(B, C, int(H*self.downsample_factor), int(W*self.downsample_factor))
@@ -350,6 +319,7 @@ def main():
 
 
     loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
+    # loss_fn = CombinedLoss(ce_weight=0.5, dice_weight=0.5, ignore_index=255)
 
     for epoch in range(1 + epoch_modifier, EPOCHS + 1 + epoch_modifier):
          
