@@ -1,0 +1,104 @@
+import torch.nn as nn
+from transformers import SegformerModel, SegformerForSemanticSegmentation
+import utils
+import torch
+import torch.nn.functional as F
+
+class MultiHeadCrossAttention(nn.Module):
+    def __init__(self, in_dim, attn_dim=128, num_heads=4):
+        super().__init__()
+        assert attn_dim % num_heads == 0
+        self.num_heads = num_heads
+        self.head_dim = attn_dim // num_heads
+
+        self.query = nn.Linear(in_dim, attn_dim)
+        self.key = nn.Linear(in_dim, attn_dim)
+        self.value = nn.Linear(in_dim, attn_dim)
+        self.out_proj = nn.Linear(attn_dim, in_dim)
+
+    def forward(self, x_q, x_kv):
+        B, N_q, _ = x_q.shape
+        B, N_kv, _ = x_kv.shape
+
+        Q = self.query(x_q).view(B, N_q, self.num_heads, self.head_dim).transpose(1, 2)
+        K = self.key(x_kv).view(B, N_kv, self.num_heads, self.head_dim).transpose(1, 2)
+        V = self.value(x_kv).view(B, N_kv, self.num_heads, self.head_dim).transpose(1, 2)
+
+        scores = (Q @ K.transpose(-2, -1)) / (self.head_dim ** 0.5)
+        attn = F.softmax(scores, dim=-1)
+        context = attn @ V
+        context = context.transpose(1, 2).contiguous().view(B, N_q, self.num_heads * self.head_dim)
+        return self.out_proj(context)
+
+
+class SegformerCrossAttentionWrapper(nn.Module):
+    def __init__(self, segformer_name='nvidia/mit-b5', cross_attn_dims=[64, 128, 256, 384], downsample_factor=0.5, num_classes=16):
+        super().__init__()
+
+        # RGB-Branch
+        base_model_rgb = SegformerForSemanticSegmentation.from_pretrained(segformer_name, num_labels=num_classes)
+        self.encoder_rgb = base_model_rgb.segformer.encoder
+        self.decoder = base_model_rgb.decode_head
+
+        config = self.encoder_rgb.config
+        self.encoder_edge = SegformerModel(config).encoder
+
+        # Patch embedding auf 1 Channel anpassen
+        self.encoder_edge.patch_embeddings[0].proj = nn.Conv2d(
+            in_channels=1,
+            out_channels=self.encoder_edge.config.hidden_sizes[0],
+            kernel_size=7,
+            stride=4,
+            padding=3
+        )
+
+        self.cross_attn_layers = nn.ModuleList([
+            MultiHeadCrossAttention(in_dim=c, attn_dim=d) 
+            for c, d in zip(config.hidden_sizes, cross_attn_dims)
+        ])
+
+        self.alpha_logits = nn.ParameterList([
+            nn.Parameter(torch.tensor(-0.2, dtype=torch.float32))
+            for _ in range(len(config.hidden_sizes))
+        ])
+
+        self.downsample_factor = downsample_factor
+
+    def forward(self, image_rgb, labels=None):
+
+        edge_map = utils.multiscale_scharr_edges(image_rgb)
+
+        # RGB hidden states
+        rgb_outputs = self.encoder_rgb(image_rgb, output_hidden_states=True)
+        rgb_hidden_states = rgb_outputs.hidden_states
+
+        # Edge hidden states
+        edge_outputs = self.encoder_edge(edge_map, output_hidden_states=True)
+        edge_hidden_states = edge_outputs.hidden_states
+
+        cross_features = []
+        for i in range(4):
+            B, C, H, W = rgb_hidden_states[i].shape
+
+            # Downsample für Cross-Attention
+            rgb_small = F.interpolate(rgb_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
+            edge_small = F.interpolate(edge_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
+
+            # Flatten für Attention
+            rgb_flat = rgb_small.flatten(2).transpose(1, 2)  # B, N, C
+            edge_flat = edge_small.flatten(2).transpose(1, 2)
+
+            # Cross-Attention
+            attn_out = self.cross_attn_layers[i](rgb_flat, edge_flat)
+            alpha = torch.sigmoid(self.alpha_logits[i])
+            fused = rgb_flat + alpha * attn_out
+
+            # Zurück auf Originalgröße
+            fused = fused.transpose(1, 2).view(B, C, int(H*self.downsample_factor), int(W*self.downsample_factor))
+            fused = F.interpolate(fused, size=(H, W), mode='bilinear', align_corners=False)
+            cross_features.append(fused)
+
+        # Decoder
+        logits = self.decoder(cross_features)
+
+        return logits

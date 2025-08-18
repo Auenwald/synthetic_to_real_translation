@@ -12,19 +12,12 @@ import numpy as np
 import utils 
 from torch_ema import ExponentialMovingAverage
 import pytorch_warmup as  warmup
-from torchvision.models.segmentation.deeplabv3 import DeepLabHead
-from torchvision.models.segmentation import deeplabv3_resnet101
-from torchvision.models import resnet101, ResNet101_Weights
 
-# import torchmetrics
+import model_utils
 from torchmetrics.functional import jaccard_index
-from segformer_pytorch import Segformer
-from transformers import SegformerModel, SegformerConfig, SegformerForSemanticSegmentation
+
 import random
-from torchvision import models
 
-
-from transformers.modeling_outputs import SemanticSegmenterOutput
 # os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:8"
 SEED = 0
 
@@ -62,50 +55,6 @@ def init_parser(parser):
     parser.add_argument('--train_print_steps', type=int, default=50, help="Specify the number of iterations between two mIoU prints during training")
 
 
-def get_model_by_name(name):
-    if "segformer" in name.lower():
-        print("Using SegFormer B5")
-
-        backbone = SegformerModel.from_pretrained('nvidia/mit-b5')
-        config = SegformerConfig.from_pretrained('nvidia/mit-b5', num_labels=num_classes)
-        
-        model = SegformerForSemanticSegmentation(config)
-        model.segformer.load_state_dict(backbone.state_dict(), strict=False)
-
-
-        # pretrained on Ade20k: SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b5-finetuned-ade-640-640", ignore_mismatched_sizes=True, num_labels=num_classes)
-
-        return model
-    elif "deeplab" in name.lower():
-        print("Using DeeplabV3")
-        backbone = resnet101(weights=ResNet101_Weights.IMAGENET1K_V1)
-        model = models.segmentation.deeplabv3_resnet101(weights=None, backbone=backbone) 
-        model.classifier[4] = nn.Conv2d(256, num_classes, kernel_size=1)
-
-        if hasattr(model, "aux_classifier") and model.aux_classifier is not None:
-            model.aux_classifier[4] = nn.Conv2d(256, num_classes, kernel_size=1)
-        
-
-        return model
-    else:
-        raise ValueError("Unknown model name!")
-
-def get_logits(model, data):
-    output = model(data)
-
-    # HuggingFace SegFormer
-    if isinstance(output, SemanticSegmenterOutput):
-        return output.logits
-
-    # torchvision DeepLabV3
-    if isinstance(output, dict) and 'out' in output:
-        return output['out']
-
-    # Nur Tensor zurückgegeben?
-    if isinstance(output, torch.Tensor):
-        return output
-
-    raise ValueError(f"Unbekanntes Modell-Rückgabeformat: {type(output)}")
 
 
 def main():
@@ -146,7 +95,7 @@ def main():
     # init model
     # model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b1-finetuned-ade-512-512", ignore_mismatched_sizes=True, num_labels=num_classes)
 
-    model = get_model_by_name(MODEL_NAME)
+    model = model_utils.get_model_by_name(MODEL_NAME, num_classes)
     model = model.to(DEVICE)
 
 
@@ -232,7 +181,7 @@ def train(train_loader, model, optim, loss_fn, DEVICE, ema, PRINT_INTERVAL, AVER
         
         data, targets = data.to(DEVICE), targets.to(DEVICE).long()
         # wrapper for handling deepLabv3 and SegFormer
-        logits = get_logits(model, data)
+        logits = model_utils.get_logits(model, data)
 
         if (data.shape[2] != targets.shape[1] or data.shape[3] != targets.shape[2]):
             print("SKIP" + str(data.shape) + str(targets.shape))
@@ -263,6 +212,8 @@ def train(train_loader, model, optim, loss_fn, DEVICE, ema, PRINT_INTERVAL, AVER
     
 def validate(val_loader, model, DEVICE, applied_ema, dataset_name, epoch, max_epochs):
      model.eval()
+     suffix = "-ema" if applied_ema else ""
+     dataset_key = dataset_name + suffix
 
      for idx, (data, targets) in enumerate(val_loader):
         
@@ -272,24 +223,17 @@ def validate(val_loader, model, DEVICE, applied_ema, dataset_name, epoch, max_ep
         data, targets = data.to(DEVICE), targets.to(DEVICE).long()
 
         with torch.no_grad():
-             output = get_logits(model, data)
+             output = model_utils.get_logits(model, data)
              output = torch.nn.functional.interpolate(output, size=utils.get_image_size(dataset_name), mode='bilinear')
-        
-        del data
 
         preds = torch.argmax(output, dim=1)          
         mean_iou = jaccard_index(task='multiclass', ignore_index=255, num_classes=num_classes, preds=preds, target=targets) * 100
 
-
-        # TODO: not fancy
-        if applied_ema:
-            logging_text = f'[val-{dataset_name}-ema] - Epoch: {epoch}/{max_epochs}'
-            print(f'{logging_text} Progress: {idx}/{len(val_loader)}, mean-IoU: {mean_iou:.2f}')
-            scores[dataset_name + "-ema"][epoch].append(round(mean_iou.item(), 3))
-        else:
-            logging_text = f'[val-{dataset_name}] - Epoch: {epoch}/{max_epochs}'
-            print(f'{logging_text} Progress: {idx}/{len(val_loader)}, mean-IoU: {mean_iou:.2f}')
-            scores[dataset_name][epoch].append(round(mean_iou.item(), 3))
+        # write into scores
+        print(f'[val-{dataset_name}{suffix}] - Epoch: {epoch}/{max_epochs} '
+              f'Progress: {idx}/{len(val_loader)}, mean-IoU: {mean_iou:.2f}')
+        
+        scores[dataset_key][epoch].append(round(mean_iou.item(), 3))
 
 
 def write_scores_to_log_file(LOG_PATH, epoch, APPLY_AVERAGING, SOURCE_DATASET_NAME, TARGET_DATASET_NAME):

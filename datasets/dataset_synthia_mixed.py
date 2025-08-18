@@ -65,7 +65,7 @@ class SynthiaMixed(Dataset):
     def __init__(self, root_dir, split='train', transform=None):
         self.root_dir = root_dir
         self.images_orig = sorted(glob.glob(f'{root_dir}/RGB/*.png'))
-        self.images_stylized = sorted(glob.glob(f'{root_dir}/../synthiastyle/GT/STYLE/*.png'))
+        self.images_stylized = sorted(glob.glob(f'{root_dir}/../synthiastyle/STYLE/*.png'))
         self.masks = sorted(glob.glob(f'{root_dir}/GT/LABELS/*.png'))
 
         self.num_classes = 16
@@ -115,4 +115,4 @@ class SynthiaMixed(Dataset):
 
 
     def __len__(self):
-        return len(self.images)
+        return len(self.images_orig)

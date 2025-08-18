@@ -97,17 +97,25 @@ def get_augmentation(dataset_name, split):
 
             return A.Compose([
                 # 1. Geometrische Augs
-                A.RandomResizedCrop(size=(380, 640), scale=(0.8, 1.0), ratio=(0.75, 1.33)),
+                # A.RandomResizedCrop(size=(380, 640), scale=(0.8, 1.0), ratio=(0.75, 1.33)),
+                A.RandomCrop(width=640, height=380),
                 A.HorizontalFlip(p=0.5),
 
                 # 2. Domain-Randomization (stärkere Farb/Stil Änderungen)
                 A.OneOf([
-                    A.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.2),
-                    A.RandomGamma(gamma_limit=(80, 120)),
-                    A.RGBShift(r_shift_limit=25, g_shift_limit=25, b_shift_limit=25),
+                    A.ColorJitter(
+                        brightness=0.3,   # Helligkeit ±30 % (stabiler als 50 %)
+                        contrast=0.2,     # Kontrast ±20 %
+                        saturation=0.2,   # Sättigung ±20 %
+                        hue=0.05           # Farbton ±5 % für subtile Farbverschiebung
+                    ),
+                    A.RandomBrightnessContrast(
+                        brightness_limit=(-0.15, 0.3),  # Helligkeit leicht asymmetrisch: -15 % bis +30 %
+                        contrast_limit=0.3               # Kontrast ±30 % für stabileres Training
+                    )
                 ], p=0.7),
+                A.GaussianBlur(blur_limit=(3, 5), p=0.2),
 
-                # 3. Normalize + Tensor
                 A.Normalize(mean=(0.485, 0.456, 0.406),
                             std=(0.229, 0.224, 0.225)),
                 ToTensorV2(),
@@ -176,13 +184,6 @@ def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, 
         print("Use bdd as the target dataset")
         dataset = BDD(path, split='val', transform=get_augmentation('bdd', ''))
 
-    elif "synthia" in dataset_name:
-        print("Use synthia as the source dataset")
-        if split == "train":
-            dataset = Synthia(root_dir=path, split='train', transform=get_augmentation('synthia', 'train'), use_synthia_shapes=use_synthia_shapes)
-        else:
-            dataset = Synthia(root_dir=path, split='val', transform=get_augmentation('synthia', 'val'))
-
     elif "synthiastyle" in dataset_name:
         print("Use synthia-style as the source dataset")
         if split == "train":
@@ -196,6 +197,13 @@ def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, 
             dataset = SynthiaMixed(root_dir='./synthia', split='train', transform=get_augmentation('synthia', 'train'))
         else:
             dataset = SynthiaMixed(root_dir='./synthia', split='val', transform=get_augmentation('synthia', 'val'))
+
+    elif "synthia" in dataset_name:
+        print("Use synthia as the source dataset")
+        if split == "train":
+            dataset = Synthia(root_dir=path, split='train', transform=get_augmentation('synthia', 'train'), use_synthia_shapes=use_synthia_shapes)
+        else:
+            dataset = Synthia(root_dir=path, split='val', transform=get_augmentation('synthia', 'val'))
 
     elif "gta5" in dataset_name:
         print("Use Gta 5 as the source dataset")
