@@ -53,127 +53,196 @@ def multiscale_scharr_edges(images, sigmas=(0.5, 1.0, 2.0)):
     return edges
 
 
+# def get_augmentation(dataset_name, split):
+#     dataset_name = dataset_name.lower()
+
+#     if 'synthia' in dataset_name:
+#         if split == 'train':
+#             # return A.Compose([
+#             #     # A.HorizontalFlip(p=0.5),
+#             #     # A.Blur(blur_limit=(3, 7), p=0.5),
+#             #      A.RandomBrightnessContrast(brightness_limit=(-0.2, 0.5), contrast_limit=0.5, p=0.5),
+
+#             #     A.OneOf([local_brightness, global_brightness, local_light_spot], p=1.0),
+
+#             #     # A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.5),
+#             #     # A.RandomRotate90(p=0.5),
+#             #     A.Resize(380, 640),
+#                 #   A.RandomCrop(width=640, height=380),
+#             #     # A.RandomCrop(width=WIDTH, height=HEIGHT),
+#             #     # A.Resize(512, 1024),
+#                 #   A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+#                 #   ToTensorV2(),
+#             # ]) 
+
+#             # return A.Compose([
+#             #     A.RandomResizedCrop(size=(380, 640), scale=(0.8, 1.0), ratio=(0.75, 1.33)),
+#             #     A.HorizontalFlip(p=0.5),
+            
+#             #     A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.25),
+#             #     A.RandomBrightnessContrast(brightness_limit=(-0.2, 0.5), contrast_limit=0.5, p=0.25),
+            
+#             #     # Optional: leichte Unschärfe oder Rauschen für Sensorvariationen
+#             #     A.OneOf([
+#             #         A.GaussianBlur(blur_limit=(3, 7), p=0.5),
+#             #         A.GaussNoise(p=0.5)
+#             #     ], p=0.3),
+            
+#             #     # Normalisierung für ResNet/VGG-Backbones
+#             #     A.Normalize(mean=(0.485, 0.456, 0.406),
+#             #                 std=(0.229, 0.224, 0.225)),
+#             #     ToTensorV2(),
+#             #  ])
+
+#             return A.Compose([
+#                 # 1. Geometrische Augs
+#                 # A.RandomResizedCrop(size=(380, 640), scale=(0.8, 1.0), ratio=(0.75, 1.33)),
+#                 A.RandomCrop(width=640, height=380),
+#                 A.HorizontalFlip(p=0.5),
+
+#                 # 2. Domain-Randomization (stärkere Farb/Stil Änderungen)
+#                 A.OneOf([
+#                     A.ColorJitter(
+#                         brightness=0.3,   # Helligkeit ±30 % (stabiler als 50 %)
+#                         contrast=0.2,     # Kontrast ±20 %
+#                         saturation=0.2,   # Sättigung ±20 %
+#                         hue=0.05           # Farbton ±5 % für subtile Farbverschiebung
+#                     ),
+#                     A.RandomBrightnessContrast(
+#                         brightness_limit=(-0.15, 0.3),  # Helligkeit leicht asymmetrisch: -15 % bis +30 %
+#                         contrast_limit=0.3               # Kontrast ±30 % für stabileres Training
+#                     )
+#                 ], p=0.7),
+#                 A.GaussianBlur(blur_limit=(3, 5), p=0.2),
+
+#                 A.Normalize(mean=(0.485, 0.456, 0.406),
+#                             std=(0.229, 0.224, 0.225)),
+#                 ToTensorV2(),
+#             ])
+        
+#         else:
+#             return A.Compose(
+#             [
+#                 A.Resize(380, 640),
+#                 A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+#                 ToTensorV2(),
+#             ])
+    
+#     elif dataset_name == 'gta5':
+#         if split == 'train':
+#             return A.Compose([
+#                 # A.HorizontalFlip(p=0.5),
+#                 # A.Blur(blur_limit=(3, 7), p=0.5),
+#                 # A.RandomBrightnessContrast(p=0.2),
+#                 A.RandomBrightnessContrast(brightness_limit=(-0.2, 0.5), contrast_limit=0.5, p=0.5),
+#                 # A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.5),
+#                 # A.RandomRotate90(p=0.5),
+#                 # A.Resize(380, 640),
+#                 A.RandomCrop(width=512, height=1024),
+#                 # A.RandomCrop(width=256, height=256),
+#                 # A.RandomCrop(width=WIDTH, height=HEIGHT),
+#                 # A.Resize(512, 1024),
+#                 A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+#                 ToTensorV2(),
+#             ]) 
+#         else:
+#             return A.Compose(
+#             [
+#                 A.Resize(512, 1024),
+#                 A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+#                 ToTensorV2(),
+#             ])
+
+#     elif dataset_name == 'cityscapes':
+#         return A.Compose([
+#             # A.SmallestMaxSize(max_size=160),
+#             # A.CenterCrop(height=128, width=128),
+#             # A.Resize(256, 512),
+#             A.Resize(512, 1024),
+#             A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+#             ToTensorV2(),
+#         ])
+    
+#     elif dataset_name == 'bdd':
+#         ''' bdd case '''
+#         return A.Compose([
+#         # A.SmallestMaxSize(max_size=160),
+#         # A.CenterCrop(height=128, width=128),
+#         # A.Resize(256, 512),
+#         A.Resize(360, 640),
+#         A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+#         ToTensorV2(),
+#     ])
+
 
 def get_augmentation(dataset_name, split):
     dataset_name = dataset_name.lower()
+    
+    additional_targets = {'mask': 'mask'}  # Masken immer korrekt behandeln
 
     if 'synthia' in dataset_name:
         if split == 'train':
-            # return A.Compose([
-            #     # A.HorizontalFlip(p=0.5),
-            #     # A.Blur(blur_limit=(3, 7), p=0.5),
-            #      A.RandomBrightnessContrast(brightness_limit=(-0.2, 0.5), contrast_limit=0.5, p=0.5),
-
-            #     A.OneOf([local_brightness, global_brightness, local_light_spot], p=1.0),
-
-            #     # A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.5),
-            #     # A.RandomRotate90(p=0.5),
-            #     A.Resize(380, 640),
-                #   A.RandomCrop(width=640, height=380),
-            #     # A.RandomCrop(width=WIDTH, height=HEIGHT),
-            #     # A.Resize(512, 1024),
-                #   A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-                #   ToTensorV2(),
-            # ]) 
-
-            # return A.Compose([
-            #     A.RandomResizedCrop(size=(380, 640), scale=(0.8, 1.0), ratio=(0.75, 1.33)),
-            #     A.HorizontalFlip(p=0.5),
-            
-            #     A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.25),
-            #     A.RandomBrightnessContrast(brightness_limit=(-0.2, 0.5), contrast_limit=0.5, p=0.25),
-            
-            #     # Optional: leichte Unschärfe oder Rauschen für Sensorvariationen
-            #     A.OneOf([
-            #         A.GaussianBlur(blur_limit=(3, 7), p=0.5),
-            #         A.GaussNoise(p=0.5)
-            #     ], p=0.3),
-            
-            #     # Normalisierung für ResNet/VGG-Backbones
-            #     A.Normalize(mean=(0.485, 0.456, 0.406),
-            #                 std=(0.229, 0.224, 0.225)),
-            #     ToTensorV2(),
-            #  ])
-
             return A.Compose([
-                # 1. Geometrische Augs
-                # A.RandomResizedCrop(size=(380, 640), scale=(0.8, 1.0), ratio=(0.75, 1.33)),
                 A.RandomCrop(width=640, height=380),
                 A.HorizontalFlip(p=0.5),
-
-                # 2. Domain-Randomization (stärkere Farb/Stil Änderungen)
                 A.OneOf([
-                    A.ColorJitter(
-                        brightness=0.3,   # Helligkeit ±30 % (stabiler als 50 %)
-                        contrast=0.2,     # Kontrast ±20 %
-                        saturation=0.2,   # Sättigung ±20 %
-                        hue=0.05           # Farbton ±5 % für subtile Farbverschiebung
-                    ),
-                    A.RandomBrightnessContrast(
-                        brightness_limit=(-0.15, 0.3),  # Helligkeit leicht asymmetrisch: -15 % bis +30 %
-                        contrast_limit=0.3               # Kontrast ±30 % für stabileres Training
-                    )
+                    A.ColorJitter(brightness=0.3, contrast=0.2, saturation=0.2, hue=0.05),
+                    A.RandomBrightnessContrast(brightness_limit=(-0.15, 0.3), contrast_limit=0.3)
                 ], p=0.7),
                 A.GaussianBlur(blur_limit=(3, 5), p=0.2),
-
                 A.Normalize(mean=(0.485, 0.456, 0.406),
                             std=(0.229, 0.224, 0.225)),
                 ToTensorV2(),
-            ])
-        
+            ], additional_targets=additional_targets)
         else:
-            return A.Compose(
-            [
+            return A.Compose([
                 A.Resize(380, 640),
-                A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                A.Normalize(mean=(0.485, 0.456, 0.406),
+                            std=(0.229, 0.224, 0.225)),
                 ToTensorV2(),
-            ])
-    
-    elif dataset_name == 'gta5':
+            ], additional_targets=additional_targets)
+
+    elif 'gta5' in dataset_name:
         if split == 'train':
             return A.Compose([
-                # A.HorizontalFlip(p=0.5),
-                # A.Blur(blur_limit=(3, 7), p=0.5),
-                # A.RandomBrightnessContrast(p=0.2),
-                A.RandomBrightnessContrast(brightness_limit=(-0.2, 0.5), contrast_limit=0.5, p=0.5),
-                # A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.5),
-                # A.RandomRotate90(p=0.5),
-                # A.Resize(380, 640),
                 A.RandomCrop(width=512, height=1024),
-                # A.RandomCrop(width=256, height=256),
-                # A.RandomCrop(width=WIDTH, height=HEIGHT),
-                # A.Resize(512, 1024),
-                A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                A.RandomBrightnessContrast(brightness_limit=(-0.2, 0.5), contrast_limit=0.5, p=0.5),
+                A.Normalize(mean=(0.485, 0.456, 0.406),
+                            std=(0.229, 0.224, 0.225)),
                 ToTensorV2(),
-            ]) 
+            ], additional_targets=additional_targets)
         else:
-            return A.Compose(
-            [
+            return A.Compose([
                 A.Resize(512, 1024),
-                A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                A.Normalize(mean=(0.485, 0.456, 0.406),
+                            std=(0.229, 0.224, 0.225)),
                 ToTensorV2(),
-            ])
+            ], additional_targets=additional_targets)
 
-    elif dataset_name == 'cityscapes':
+    elif 'cityscapes' in dataset_name:
         return A.Compose([
-            # A.SmallestMaxSize(max_size=160),
-            # A.CenterCrop(height=128, width=128),
-            # A.Resize(256, 512),
             A.Resize(512, 1024),
-            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            A.Normalize(mean=(0.485, 0.456, 0.406),
+                        std=(0.229, 0.224, 0.225)),
             ToTensorV2(),
-        ])
-    
-    elif dataset_name == 'bdd':
-        ''' bdd case '''
+        ], additional_targets=additional_targets)
+
+    elif 'bdd' in dataset_name:
         return A.Compose([
-        # A.SmallestMaxSize(max_size=160),
-        # A.CenterCrop(height=128, width=128),
-        # A.Resize(256, 512),
-        A.Resize(360, 640),
-        A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-        ToTensorV2(),
-    ])
+            A.Resize(360, 640),
+            A.Normalize(mean=(0.485, 0.456, 0.406),
+                        std=(0.229, 0.224, 0.225)),
+            ToTensorV2(),
+        ], additional_targets=additional_targets)
+
+    else:
+        # Fallback: Resize + Normalize
+        return A.Compose([
+            A.Resize(512, 1024),
+            A.Normalize(mean=(0.485, 0.456, 0.406),
+                        std=(0.229, 0.224, 0.225)),
+            ToTensorV2(),
+        ], additional_targets=additional_targets)
 
 
 def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, use_synthia_shapes=False):
@@ -228,5 +297,3 @@ def get_image_size(dataset_name):
         return (512, 1024)
     else:
         return (512, 1024)
-    
-

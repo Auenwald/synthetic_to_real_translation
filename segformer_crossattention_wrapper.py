@@ -65,7 +65,11 @@ class FeatureDropout(nn.Module):
 
 
 class SegformerCrossAttentionWrapper(nn.Module):
-    def __init__(self, segformer_name='nvidia/mit-b5', cross_attn_dims=[64, 128, 256, 384], downsample_factor=0.5, num_classes=16):
+    def __init__(self, segformer_name='nvidia/mit-b5', 
+                 cross_attn_dims=[64, 128, 256, 384], 
+                 downsample_factor=0.5,
+                   num_classes=16,
+                   hybrid_out_ch=4):
         super().__init__()
 
         # RGB-Branch
