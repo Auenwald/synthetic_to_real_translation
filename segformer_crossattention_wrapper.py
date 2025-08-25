@@ -33,6 +33,37 @@ class MultiHeadCrossAttention(nn.Module):
         return self.out_proj(context)
 
 
+class FeatureDropout(nn.Module):
+    def __init__(self, drop_prob=0.3, mode="branch"):
+        """
+        drop_prob: Wahrscheinlichkeit fürs Droppen
+        mode: "branch" -> RGB oder Hybrid-Branch komplett droppen
+              "channel" -> Kanäle im Hybrid-Branch maskieren
+        """
+        super().__init__()
+        self.drop_prob = drop_prob
+        self.mode = mode
+
+    def forward(self, feat_rgb, feat_hybrid):
+        if not self.training or self.drop_prob == 0:
+            return feat_rgb, feat_hybrid
+
+        if self.mode == "branch":
+            if torch.rand(1).item() < self.drop_prob:
+                # wähle zufällig, welche Branch gedroppt wird
+                if torch.rand(1).item() < 0.5:
+                    feat_rgb = torch.zeros_like(feat_rgb)
+                else:
+                    feat_hybrid = torch.zeros_like(feat_hybrid)
+
+        elif self.mode == "channel":
+            # Kanäle im Hybrid droppen
+            mask = (torch.rand(feat_hybrid.size(1), device=feat_hybrid.device) > self.drop_prob).float()
+            feat_hybrid = feat_hybrid * mask.view(1, -1, 1, 1)
+
+        return feat_rgb, feat_hybrid
+
+
 class SegformerCrossAttentionWrapper(nn.Module):
     def __init__(self, segformer_name='nvidia/mit-b5', cross_attn_dims=[64, 128, 256, 384], downsample_factor=0.5, num_classes=16):
         super().__init__()
@@ -43,16 +74,18 @@ class SegformerCrossAttentionWrapper(nn.Module):
         self.decoder = base_model_rgb.decode_head
 
         config = self.encoder_rgb.config
-        self.encoder_edge = SegformerModel(config).encoder
+        self.encoder_feat_hybrid = SegformerModel(config).encoder
 
         # Patch embedding auf 1 Channel anpassen
-        self.encoder_edge.patch_embeddings[0].proj = nn.Conv2d(
-            in_channels=3,
-            out_channels=self.encoder_edge.config.hidden_sizes[0],
+        self.encoder_feat_hybrid.patch_embeddings[0].proj = nn.Conv2d(
+            in_channels=1,
+            out_channels=self.encoder_feat_hybrid.config.hidden_sizes[0],
             kernel_size=7,
             stride=4,
             padding=3
         )
+
+        self.feature_dropout = FeatureDropout(drop_prob=0.3, mode="branch")
 
         self.cross_attn_layers = nn.ModuleList([
             MultiHeadCrossAttention(in_dim=c, attn_dim=d) 
@@ -135,44 +168,54 @@ class SegformerCrossAttentionWrapper(nn.Module):
         return combined
 
 
-    def forward(self, image_rgb, labels=None, mode="fft_dct_edge"):
+    def forward(self, image_rgb, labels=None, mode="dct"):
 
         # image_lab = kornia.color.rgb_to_lab(image_rgb)
         # edge_map = utils.multiscale_scharr_edges(image_rgb)
 
         if mode == "fft":
-            edge_map = self.fft_magnitude_1ch(image_rgb)
+            feat_hybrid = self.fft_magnitude_1ch(image_rgb)
         elif mode == "dct":
-            edge_map = self.dct_map_1ch(image_rgb)
+            feat_hybrid = self.dct_map_1ch(image_rgb)
         elif mode == "fft_dct":
-            edge_map = self.fft_dct_stack(image_rgb)
+            feat_hybrid = self.fft_dct_stack(image_rgb)
         elif mode == "fft_dct_edge":
-            edge_map = self.fft_dct_edge_stack(image_rgb)
+            feat_hybrid = self.fft_dct_edge_stack(image_rgb)
         else:
-            edge_map = utils.multiscale_scharr_edges(image_rgb)
+            feat_hybrid = utils.multiscale_scharr_edges(image_rgb)
 
         # rGB hidden states
         rgb_outputs = self.encoder_rgb(image_rgb, output_hidden_states=True)
         rgb_hidden_states = rgb_outputs.hidden_states
 
         # edge hidden states
-        edge_outputs = self.encoder_edge(edge_map, output_hidden_states=True)
-        edge_hidden_states = edge_outputs.hidden_states
+        feat_hybrid_outputs = self.encoder_feat_hybrid(feat_hybrid, output_hidden_states=True)
+        feat_hybrid_hidden_states = feat_hybrid_outputs.hidden_states
+
+        
 
         cross_features = []
+
+        # wrap into a list - necessary for feature dropout
+        rgb_hidden_states = list(rgb_hidden_states)
+        feat_hybrid_hidden_states = list(feat_hybrid_hidden_states)
+
         for i in range(4):
             B, C, H, W = rgb_hidden_states[i].shape
 
+            # feature dropout
+            rgb_hidden_states[i], feat_hybrid_hidden_states[i] = self.feature_dropout(rgb_hidden_states[i], feat_hybrid_hidden_states[i])
+
             # # downsampling
             rgb_small = F.interpolate(rgb_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
-            edge_small = F.interpolate(edge_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
+            feat_hybrid_small = F.interpolate(feat_hybrid_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
 
             # flattening for attention
             rgb_flat = rgb_small.flatten(2).transpose(1, 2)  # B, N, C
-            edge_flat = edge_small.flatten(2).transpose(1, 2)
+            feat_hybrid_flat = feat_hybrid_small.flatten(2).transpose(1, 2)
 
             # applying cross.attention
-            attn_out = self.cross_attn_layers[i](rgb_flat, edge_flat)
+            attn_out = self.cross_attn_layers[i](rgb_flat, feat_hybrid_flat)
             alpha = torch.sigmoid(self.alpha_logits[i])
             fused = rgb_flat + alpha * attn_out
 
