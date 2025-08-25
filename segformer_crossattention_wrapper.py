@@ -33,25 +33,6 @@ class MultiHeadCrossAttention(nn.Module):
         return self.out_proj(context)
 
 
-class HybridLayer(nn.Module):
-    def __init__(self, in_ch, out_ch=4, non_linear=True):
-        super().__init__()
-        if non_linear:
-            self.net = nn.Sequential(
-                nn.Conv2d(in_channels=in_ch, out_channels=in_ch*2, kernel_size=1, bias=False),
-                nn.BatchNorm2d(in_ch*2),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(in_channels=in_ch*2, out_channels=out_ch, kernel_size=1, bias=False),
-                nn.BatchNorm2d(out_ch)
-            )
-        else:
-            self.net = nn.Conv2d(in_ch, out_ch, kernel_size=1, bias=False)
-
-    def forward(self, x):
-        return self.net(x)
-        
-
-
 class SegformerCrossAttentionWrapper(nn.Module):
     def __init__(self, segformer_name='nvidia/mit-b5', 
                  cross_attn_dims=[64, 128, 256, 384], 
@@ -68,10 +49,7 @@ class SegformerCrossAttentionWrapper(nn.Module):
         config = self.encoder_rgb.config
         self.encoder_edge = SegformerModel(config).encoder
 
-        # add hybrid layer
-        self.hybrid_layer = HybridLayer(in_ch=3, out_ch=hybrid_out_ch, non_linear=True)
-
-        # Patch embedding auf hybrid_out_ch Channel anpassen
+        # Patch embedding auf 1 Channel anpassen
         self.encoder_edge.patch_embeddings[0].proj = nn.Conv2d(
             in_channels=hybrid_out_ch,
             out_channels=self.encoder_edge.config.hidden_sizes[0],
@@ -79,8 +57,6 @@ class SegformerCrossAttentionWrapper(nn.Module):
             stride=4,
             padding=3
         )
-
-        
 
         self.cross_attn_layers = nn.ModuleList([
             MultiHeadCrossAttention(in_dim=c, attn_dim=d) 
@@ -176,9 +152,6 @@ class SegformerCrossAttentionWrapper(nn.Module):
             edge_map = self.fft_dct_stack(image_rgb)
         elif mode == "fft_dct_edge":
             edge_map = self.fft_dct_edge_stack(image_rgb)
-        elif mode == "fft_dct_edge_hybrid":
-            combined = self.fft_dct_edge_stack(image_rgb)
-            edge_map = self.hybrid_layer(combined)
         else:
             edge_map = utils.multiscale_scharr_edges(image_rgb)
 
