@@ -68,7 +68,7 @@ class SegformerCrossAttentionWrapper(nn.Module):
                  cross_attn_dims=[64, 128, 256, 384], 
                  downsample_factor=0.5,
                    num_classes=16,
-                   hybrid_out_ch=1):
+                   hybrid_out_ch=3):
         super().__init__()
 
         # rgb branch
@@ -171,7 +171,7 @@ class SegformerCrossAttentionWrapper(nn.Module):
         return combined
 
 
-    def forward(self, image_rgb, labels=None, mode="dct"):
+    def forward(self, image_rgb, labels=None, mode="lab"):
 
         # image_lab = kornia.color.rgb_to_lab(image_rgb)
         # edge_map = utils.multiscale_scharr_edges(image_rgb)
@@ -180,6 +180,8 @@ class SegformerCrossAttentionWrapper(nn.Module):
             feat_hybrid = self.fft_magnitude_1ch(image_rgb)
         elif mode == "dct":
             feat_hybrid = self.dct_map_1ch(image_rgb)
+        elif mode == "lab":
+            feat_hybrid = kornia.color.rgb_to_lab(image_rgb)
         elif mode == "fft_dct":
             feat_hybrid = self.fft_dct_stack(image_rgb)
         elif mode == "fft_dct_edge":
