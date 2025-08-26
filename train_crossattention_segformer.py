@@ -167,7 +167,7 @@ def train(train_loader, model, optim, loss_fn, DEVICE, ema, PRINT_INTERVAL, AVER
             continue
 
         h, w = data.shape[2], data.shape[3]
-        logits = torch.nn.functional.interpolate(logits, size=(h, w), mode='bilinear')
+        logits = torch.nn.functional.interpolate(logits, size=(h, w), mode='bilinear', align_corners=False)
     
         loss = loss_fn(logits, targets)
 

@@ -14,6 +14,32 @@ import torch.nn.functional as F
 
 
 
+
+def compute_mIoU_and_per_class(preds, labels, num_classes):
+    preds = preds.view(-1)
+    labels = labels.view(-1)
+    
+    mask = (labels >= 0) & (labels < num_classes)
+    preds = preds[mask]
+    labels = labels[mask]
+
+    conf_matrix = torch.bincount(
+        num_classes * labels + preds,
+        minlength=num_classes**2
+    ).reshape(num_classes, num_classes).float()
+
+    TP = conf_matrix.diag()
+    FP = conf_matrix.sum(dim=0) - TP
+    FN = conf_matrix.sum(dim=1) - TP
+
+    per_class_IoU = TP / (TP + FP + FN + 1e-6)
+    per_class_dict = {int(c): float(per_class_IoU[c].item())
+                      for c in range(num_classes) if conf_matrix.sum(dim=1)[c] > 0}
+
+    mean_iou = sum(per_class_dict.values()) / len(per_class_dict)
+    return mean_iou, per_class_dict
+
+
 def sobel_edges(images):
     # images: [B, 3, H, W] -> Graustufen + Sobel
     gray = images.mean(dim=1, keepdim=True)  # [B,1,H,W]
@@ -177,30 +203,32 @@ def multiscale_scharr_edges(images, sigmas=(0.5, 1.0, 2.0)):
 
 def get_augmentation(dataset_name, split):
     dataset_name = dataset_name.lower()
-    
-    additional_targets = {'mask': 'mask'}  # Masken immer korrekt behandeln
 
     if 'synthia' in dataset_name:
         if split == 'train':
             return A.Compose([
-                A.RandomCrop(width=640, height=380),
+                # A.RandomCrop(width=640, height=380),
                 A.HorizontalFlip(p=0.5),
+                A.RandomResizedCrop(size=(380, 640), scale=(0.8, 1.0), ratio=(0.75, 1.33)),
                 A.OneOf([
-                    A.ColorJitter(brightness=0.3, contrast=0.2, saturation=0.2, hue=0.05),
-                    A.RandomBrightnessContrast(brightness_limit=(-0.15, 0.3), contrast_limit=0.3)
+                    A.ColorJitter(brightness=0.3, contrast=0.2, saturation=0.3, hue=0.05, p=0.5),
+                    A.RandomBrightnessContrast(
+                        brightness_limit=(-0.2, 0.2), 
+                        contrast_limit=(-0.2, 0.2),
+                        p=0.5),
                 ], p=0.7),
-                A.GaussianBlur(blur_limit=(3, 5), p=0.2),
+                A.GaussianBlur(blur_limit=(3, 5), sigma_limit=(0.1, 2.0), p=0.2),
                 A.Normalize(mean=(0.485, 0.456, 0.406),
                             std=(0.229, 0.224, 0.225)),
                 ToTensorV2(),
-            ], additional_targets=additional_targets)
+            ])
         else:
             return A.Compose([
                 A.Resize(380, 640),
                 A.Normalize(mean=(0.485, 0.456, 0.406),
                             std=(0.229, 0.224, 0.225)),
                 ToTensorV2(),
-            ], additional_targets=additional_targets)
+            ])
 
     elif 'gta5' in dataset_name:
         if split == 'train':
@@ -210,14 +238,14 @@ def get_augmentation(dataset_name, split):
                 A.Normalize(mean=(0.485, 0.456, 0.406),
                             std=(0.229, 0.224, 0.225)),
                 ToTensorV2(),
-            ], additional_targets=additional_targets)
+            ])
         else:
             return A.Compose([
                 A.Resize(512, 1024),
                 A.Normalize(mean=(0.485, 0.456, 0.406),
                             std=(0.229, 0.224, 0.225)),
                 ToTensorV2(),
-            ], additional_targets=additional_targets)
+            ])
 
     elif 'cityscapes' in dataset_name:
         return A.Compose([
@@ -225,7 +253,7 @@ def get_augmentation(dataset_name, split):
             A.Normalize(mean=(0.485, 0.456, 0.406),
                         std=(0.229, 0.224, 0.225)),
             ToTensorV2(),
-        ], additional_targets=additional_targets)
+        ])
 
     elif 'bdd' in dataset_name:
         return A.Compose([
@@ -233,7 +261,7 @@ def get_augmentation(dataset_name, split):
             A.Normalize(mean=(0.485, 0.456, 0.406),
                         std=(0.229, 0.224, 0.225)),
             ToTensorV2(),
-        ], additional_targets=additional_targets)
+        ])
 
     else:
         # Fallback: Resize + Normalize
@@ -242,7 +270,7 @@ def get_augmentation(dataset_name, split):
             A.Normalize(mean=(0.485, 0.456, 0.406),
                         std=(0.229, 0.224, 0.225)),
             ToTensorV2(),
-        ], additional_targets=additional_targets)
+        ])
 
 
 def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, use_synthia_shapes=False):

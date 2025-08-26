@@ -246,7 +246,7 @@ def validate(val_loader, model, DEVICE, applied_ema, dataset_name, epoch, max_ep
 
         with torch.no_grad():
              output = model_utils.get_logits(model, data)
-             output = torch.nn.functional.interpolate(output, size=utils.get_image_size(dataset_name), mode='bilinear')
+             output = torch.nn.functional.interpolate(output, size=utils.get_image_size(dataset_name), mode='bilinear', align_corners=False)
 
         preds = torch.argmax(output, dim=1)          
         mean_iou = jaccard_index(task='multiclass', ignore_index=255, num_classes=num_classes, preds=preds, target=targets) * 100

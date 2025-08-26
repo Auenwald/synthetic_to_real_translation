@@ -12,6 +12,9 @@ from torch_ema import ExponentialMovingAverage
 import pytorch_warmup as  warmup
 import model_utils
 from segformer_crossattention_wrapper import *
+import os
+import json
+from losses import CombinedLoss
 
 # import torchmetrics
 from torchmetrics.functional import jaccard_index
@@ -94,7 +97,9 @@ def main():
     # model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b1-finetuned-ade-512-512", ignore_mismatched_sizes=True, num_labels=num_classes)
     
 
-    model = model_utils.get_model_by_name(MODEL_NAME, num_classes)
+    # model = model_utils.get_model_by_name(MODEL_NAME, num_classes)
+    model = SegformerCrossAttentionWrapper(segformer_name='nvidia/mit-b5')
+
     model = model.to(DEVICE)
    
     if args.optimizer.lower() == 'sgd': 
@@ -109,14 +114,10 @@ def main():
     else:
         ema = None
 
-    loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
+    # loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
+    loss_fn = CombinedLoss(ce_weight=0.5, dice_weight=0.5, ignore_index=255)
 
     for epoch in range(1 + epoch_modifier, EPOCHS + 1 + epoch_modifier):
-         
-        scores[TARGET_DATASET_NAME][epoch] = []
-        scores[TARGET_DATASET_NAME + "-ema"][epoch] = []
-        scores[SOURCE_DATASET_NAME][epoch] = []
-        scores[SOURCE_DATASET_NAME + "-ema"][epoch] = []
          
         train(source_train_data_loader, model, optim, loss_fn, DEVICE, ema, PRINT_INTERVAL, AVERAGING_INTERVAL, SOURCE_DATASET_NAME)
 
@@ -126,15 +127,15 @@ def main():
         if WEIGHT_AVERAGING:
             with ema.average_parameters():
                 if not SKIP_VAL_SOURCE:
-                    validate(source_val_data_loader, model, DEVICE, True, f'{SOURCE_DATASET_NAME}', epoch, EPOCHS)
-                validate(target_val_data_loader, model, DEVICE, True, f'{TARGET_DATASET_NAME}', epoch, EPOCHS)
+                    validate(source_val_data_loader, model, DEVICE, LOG_PATH, True, f'{SOURCE_DATASET_NAME}', epoch, EPOCHS)
+                validate(target_val_data_loader, model, DEVICE, LOG_PATH, True, f'{TARGET_DATASET_NAME}', epoch, EPOCHS)
         
         if not SKIP_VAL_SOURCE:
-            validate(source_val_data_loader, model, DEVICE, False, f'{SOURCE_DATASET_NAME}', epoch, EPOCHS)
-        validate(target_val_data_loader, model, DEVICE, False, f'{TARGET_DATASET_NAME}', epoch, EPOCHS)
+            validate(source_val_data_loader, model, DEVICE, LOG_PATH, False, f'{SOURCE_DATASET_NAME}', epoch, EPOCHS)
+        validate(target_val_data_loader, model, DEVICE, LOG_PATH, False, f'{TARGET_DATASET_NAME}', epoch, EPOCHS)
         
 
-        write_scores_to_log_file(LOG_PATH, epoch, WEIGHT_AVERAGING, SOURCE_DATASET_NAME, TARGET_DATASET_NAME)
+        # write_scores_to_log_file(LOG_PATH, epoch, WEIGHT_AVERAGING, SOURCE_DATASET_NAME, TARGET_DATASET_NAME)
     
     # TODO: save model if necessary (meanIOU > bestMeanIOU)
 
@@ -176,45 +177,82 @@ def train(train_loader, model, optim, loss_fn, DEVICE, ema, PRINT_INTERVAL, AVER
             print(f'[train-{SOURCE_DATASET_NAME}] Progress: {i}/{len(train_loader)}, mean-IoU: {mean_iou:.2f}, lr: {optim.param_groups[0]["lr"]}')
  
     
-def validate(val_loader, model, DEVICE, applied_ema, dataset_name, epoch, max_epochs):
-     model.eval()
-     suffix = "-ema" if applied_ema else ""
-     dataset_key = dataset_name + suffix
+def validate(val_loader, model, DEVICE, LOG_PATH, applied_ema, dataset_name, epoch, max_epochs):
+    model.eval()
+    suffix = "-ema" if applied_ema else ""
+    dataset_key = dataset_name + suffix
 
-     for idx, (data, targets) in enumerate(val_loader):
-        
+    all_preds = []
+    all_targets = []
+    
+
+    for idx, (data, targets) in enumerate(val_loader):
+    
         if data is None or targets is None:
             continue
 
         data, targets = data.to(DEVICE), targets.to(DEVICE).long()
 
         with torch.no_grad():
-             output = model_utils.get_logits(model, data)
-             output = torch.nn.functional.interpolate(output, size=utils.get_image_size(dataset_name), mode='bilinear', align_corners=False)
+                output = model_utils.get_logits(model, data)
+                output = torch.nn.functional.interpolate(output, size=utils.get_image_size(dataset_name), mode='bilinear', align_corners=False)
 
-        preds = torch.argmax(output, dim=1)          
-        mean_iou = jaccard_index(task='multiclass', ignore_index=255, num_classes=num_classes, preds=preds, target=targets) * 100
-
-        # write into scores
-        print(f'[val-{dataset_name}{suffix}] - Epoch: {epoch}/{max_epochs} '
-              f'Progress: {idx}/{len(val_loader)}, mean-IoU: {mean_iou:.2f}')
+        preds = torch.argmax(output, dim=1)     
+        all_preds.append(preds)
+        all_targets.append(targets)    
         
-        scores[dataset_key][epoch].append(round(mean_iou.item(), 3))
+
+        if idx % 10 == 0:
+            print(f'[val-{dataset_name}{suffix}] - Epoch: {epoch}/{max_epochs} '
+                f'Progress: {idx + 1}/{len(val_loader)}')
+            
+        
+    all_preds = torch.cat(all_preds, dim=0)
+    all_targets = torch.cat(all_targets, dim=0)   
+
+    miou, per_class_miou = utils.compute_mIoU_and_per_class(all_preds, all_targets, num_classes=num_classes) 
+    
 
 
+    LOG_JSON_PATH = LOG_PATH
+    scores = {}
 
-def write_scores_to_log_file(LOG_PATH, epoch, APPLY_AVERAGING, SOURCE_DATASET_NAME, TARGET_DATASET_NAME):
+    if LOG_JSON_PATH and os.path.exists(LOG_JSON_PATH) and os.path.getsize(LOG_JSON_PATH) > 0:
+        try:
+            with open(LOG_JSON_PATH, 'r') as f:
+                    scores = json.load(f)
+        except json.JSONDecodeError:
+            print(f"Warnung: {LOG_JSON_PATH} ist leer oder ungültig. Starte mit leerem Dict.")
 
-    datasets_to_log = [TARGET_DATASET_NAME, SOURCE_DATASET_NAME]
+    if dataset_key not in scores:
+        scores[dataset_key] = {}
 
-    if APPLY_AVERAGING:
-        datasets_to_log += [f'{TARGET_DATASET_NAME}-ema', f'{SOURCE_DATASET_NAME}-ema']
+    # Epoch-Daten immer setzen
+    scores[dataset_key][str(epoch)] = {
+        "mean_iou": round(miou * 100, 3),
+        "per_class_iou": {str(k): round(v*100, 3) for k, v in per_class_miou.items()}
+    }
 
-    with open(LOG_PATH, 'a') as f:
-        for dataset_key in datasets_to_log:
-            scores_for_epoch = scores[dataset_key][epoch]
-            line = f"{dataset_key} {epoch} " + " ".join(str(iou) for iou in scores_for_epoch) + "\n"
-            f.write(line)
+     # JSON zurückschreiben
+    if LOG_JSON_PATH:
+        with open(LOG_JSON_PATH, 'w') as f:
+            json.dump(scores, f, indent=4)
+
+    print(f'[val-{dataset_name}{suffix}] - Epoch: {epoch}/{max_epochs} - mean-IoU: {miou*100:.2f}')
+
+
+# def write_scores_to_log_file(LOG_PATH, epoch, APPLY_AVERAGING, SOURCE_DATASET_NAME, TARGET_DATASET_NAME):
+
+#     datasets_to_log = [TARGET_DATASET_NAME, SOURCE_DATASET_NAME]
+
+#     if APPLY_AVERAGING:
+#         datasets_to_log += [f'{TARGET_DATASET_NAME}-ema', f'{SOURCE_DATASET_NAME}-ema']
+
+#     with open(LOG_PATH, 'a') as f:
+#         for dataset_key in datasets_to_log:
+#             scores_for_epoch = scores[dataset_key][epoch]
+#             line = f"{dataset_key} {epoch} " + " ".join(str(iou) for iou in scores_for_epoch) + "\n"
+#             f.write(line)
     
 if __name__ == '__main__':
     main()

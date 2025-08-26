@@ -36,9 +36,9 @@ class MultiHeadCrossAttention(nn.Module):
 class FeatureDropout(nn.Module):
     def __init__(self, drop_prob=0.3, mode="branch"):
         """
-        drop_prob: Wahrscheinlichkeit fürs Droppen
-        mode: "branch" -> RGB oder Hybrid-Branch komplett droppen
-              "channel" -> Kanäle im Hybrid-Branch maskieren
+        drop_prob: probability for dropping one of the branches
+        mode: "branch" -> drop rgb or hybrid branch entirely
+              "channel" -> mask channels within the hybrid branch
         """
         super().__init__()
         self.drop_prob = drop_prob
@@ -50,14 +50,13 @@ class FeatureDropout(nn.Module):
 
         if self.mode == "branch":
             if torch.rand(1).item() < self.drop_prob:
-                # wähle zufällig, welche Branch gedroppt wird
+                # drop one branch
                 if torch.rand(1).item() < 0.5:
                     feat_rgb = torch.zeros_like(feat_rgb)
                 else:
                     feat_hybrid = torch.zeros_like(feat_hybrid)
 
         elif self.mode == "channel":
-            # Kanäle im Hybrid droppen
             mask = (torch.rand(feat_hybrid.size(1), device=feat_hybrid.device) > self.drop_prob).float()
             feat_hybrid = feat_hybrid * mask.view(1, -1, 1, 1)
 
@@ -69,10 +68,10 @@ class SegformerCrossAttentionWrapper(nn.Module):
                  cross_attn_dims=[64, 128, 256, 384], 
                  downsample_factor=0.5,
                    num_classes=16,
-                   hybrid_out_ch=4):
+                   hybrid_out_ch=1):
         super().__init__()
 
-        # RGB-Branch
+        # rgb branch
         base_model_rgb = SegformerForSemanticSegmentation.from_pretrained(segformer_name, num_labels=num_classes)
         self.encoder_rgb = base_model_rgb.segformer.encoder
         self.decoder = base_model_rgb.decode_head
@@ -80,16 +79,16 @@ class SegformerCrossAttentionWrapper(nn.Module):
         config = self.encoder_rgb.config
         self.encoder_feat_hybrid = SegformerModel(config).encoder
 
-        # Patch embedding auf 1 Channel anpassen
+        # adjust input embedding dim to number of modalities + channels
         self.encoder_feat_hybrid.patch_embeddings[0].proj = nn.Conv2d(
-            in_channels=1,
+            in_channels=hybrid_out_ch,
             out_channels=self.encoder_feat_hybrid.config.hidden_sizes[0],
             kernel_size=7,
             stride=4,
             padding=3
         )
 
-        self.feature_dropout = FeatureDropout(drop_prob=0.3, mode="branch")
+        # self.feature_dropout = FeatureDropout(drop_prob=0.3, mode="branch")
 
         self.cross_attn_layers = nn.ModuleList([
             MultiHeadCrossAttention(in_dim=c, attn_dim=d) 
@@ -121,18 +120,18 @@ class SegformerCrossAttentionWrapper(nn.Module):
         return: [B, 1, H, W] log-Magnitude
         """
 
-        # FFT pro Kanal
+        # fft per channel
         fft = torch.fft.fft2(image_rgb)                   
         fft_shift = torch.fft.fftshift(fft, dim=(-2, -1))
         magnitude = torch.abs(fft_shift)
         
-        # Mittelwert über RGB-Kanäle → 1 Channel
+        # mean over rgb channel -> 1 channel
         magnitude_1ch = magnitude.mean(dim=1, keepdim=True)
         
         # log-Skalierung
         log_mag = torch.log1p(magnitude_1ch)
         
-        # Normalisierung
+        # normalization
         log_mag = (log_mag - log_mag.mean(dim=[2,3], keepdim=True)) / (log_mag.std(dim=[2,3], keepdim=True) + 1e-6)
     
         return log_mag  # [B, 1, H, W]
@@ -142,13 +141,13 @@ class SegformerCrossAttentionWrapper(nn.Module):
         image_rgb: [B, C, H, W]
         return: [B, 1, H, W] DCT-Magnitude
         """
-        # DCT pro Kanal
+        # dct per channel
         dct_out = dct_2d(image_rgb)
 
-        # Mittelwert über Kanäle → 1 Channel
+        # mean over channels → 1 channel
         dct_1ch = dct_out.mean(dim=1, keepdim=True)
 
-        # Normalisierung
+        # normalization step
         dct_1ch = (dct_1ch - dct_1ch.mean(dim=[2,3], keepdim=True)) / (dct_1ch.std(dim=[2,3], keepdim=True) + 1e-6)
     
         return dct_1ch  # [B, 1, H, W]
@@ -158,7 +157,7 @@ class SegformerCrossAttentionWrapper(nn.Module):
         fft_1ch = self.fft_magnitude_1ch(image_rgb)  # [B, 1, H, W]
         dct_1ch = self.dct_map_1ch(image_rgb)        # [B, 1, H, W]
         
-        # Stack → 2 Kanäle
+        # stack → 2 Kanäle
         combined = torch.cat([fft_1ch, dct_1ch], dim=1)  # [B, 2, H, W]
         return combined
 
@@ -167,7 +166,7 @@ class SegformerCrossAttentionWrapper(nn.Module):
         dct_1ch = self.dct_map_1ch(image_rgb)        # [B, 1, H, W]
         edge_1ch = utils.multiscale_scharr_edges(image_rgb)
 
-        # Stack → 3 Kanäle
+        # stack → 3 Kanäle
         combined = torch.cat([fft_1ch, dct_1ch, edge_1ch], dim=1)  # [B, 2, H, W]
         return combined
 
@@ -208,7 +207,7 @@ class SegformerCrossAttentionWrapper(nn.Module):
             B, C, H, W = rgb_hidden_states[i].shape
 
             # feature dropout
-            rgb_hidden_states[i], feat_hybrid_hidden_states[i] = self.feature_dropout(rgb_hidden_states[i], feat_hybrid_hidden_states[i])
+            # rgb_hidden_states[i], feat_hybrid_hidden_states[i] = self.feature_dropout(rgb_hidden_states[i], feat_hybrid_hidden_states[i])
 
             # # downsampling
             rgb_small = F.interpolate(rgb_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)

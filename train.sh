@@ -69,4 +69,4 @@ python train_crossattention_segformer.py \
   --decay_factor 0.995 \
   --weight_averaging True \
   --train_print_steps 50 \
-  --gpu 0
+  --gpu 1
