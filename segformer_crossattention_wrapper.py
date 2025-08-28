@@ -88,7 +88,7 @@ class SegformerCrossAttentionWrapper(nn.Module):
             padding=3
         )
 
-        self.feature_dropout = FeatureDropout(drop_prob=0.3, mode="branch")
+        # self.feature_dropout = FeatureDropout(drop_prob=0.3, mode="branch")
 
         self.cross_attn_layers = nn.ModuleList([
             MultiHeadCrossAttention(in_dim=c, attn_dim=d) 
@@ -99,6 +99,13 @@ class SegformerCrossAttentionWrapper(nn.Module):
             nn.Parameter(torch.tensor(-0.2, dtype=torch.float32))
             for _ in range(len(config.hidden_sizes))
         ])
+
+        hidden_sizes = self.encoder_rgb.config.hidden_sizes  # z.B. [64,128,256,384]
+
+        # LayerNorms für jede Ebene definieren
+        self.rgb_ln = nn.ModuleList([nn.LayerNorm(h) for h in hidden_sizes])
+        self.aux_ln = nn.ModuleList([nn.LayerNorm(h) for h in hidden_sizes])
+        self.fused_ln = nn.ModuleList([nn.LayerNorm(h) for h in hidden_sizes])
 
         self.downsample_factor = downsample_factor
 
@@ -205,11 +212,36 @@ class SegformerCrossAttentionWrapper(nn.Module):
         rgb_hidden_states = list(rgb_hidden_states)
         feat_hybrid_hidden_states = list(feat_hybrid_hidden_states)
 
+        # for i in range(4):
+        #     B, C, H, W = rgb_hidden_states[i].shape
+
+        #     # feature dropout
+        #     # rgb_hidden_states[i], feat_hybrid_hidden_states[i] = self.feature_dropout(rgb_hidden_states[i], feat_hybrid_hidden_states[i])
+
+        #     # # downsampling
+        #     rgb_small = F.interpolate(rgb_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
+        #     feat_hybrid_small = F.interpolate(feat_hybrid_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
+
+        #     # flattening for attention
+        #     rgb_flat = rgb_small.flatten(2).transpose(1, 2)  # B, N, C
+        #     feat_hybrid_flat = feat_hybrid_small.flatten(2).transpose(1, 2)
+
+        #     # applying cross.attention
+        #     attn_out = self.cross_attn_layers[i](rgb_flat, feat_hybrid_flat)
+        #     alpha = torch.sigmoid(self.alpha_logits[i])
+        #     fused = rgb_flat + alpha * attn_out
+
+        #     # upscaling via interpolation 
+        #     fused = fused.transpose(1, 2).view(B, C, int(H*self.downsample_factor), int(W*self.downsample_factor))
+        #     fused = F.interpolate(fused, size=(H, W), mode='bilinear', align_corners=False)
+        #     cross_features.append(fused)
+        
+
         for i in range(4):
             B, C, H, W = rgb_hidden_states[i].shape
 
             # feature dropout
-            rgb_hidden_states[i], feat_hybrid_hidden_states[i] = self.feature_dropout(rgb_hidden_states[i], feat_hybrid_hidden_states[i])
+            # rgb_hidden_states[i], feat_hybrid_hidden_states[i] = self.feature_dropout(rgb_hidden_states[i], feat_hybrid_hidden_states[i])
 
             # # downsampling
             rgb_small = F.interpolate(rgb_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
@@ -220,9 +252,18 @@ class SegformerCrossAttentionWrapper(nn.Module):
             feat_hybrid_flat = feat_hybrid_small.flatten(2).transpose(1, 2)
 
             # applying cross.attention
+            rgb_flat = self.rgb_ln[i](rgb_flat)
+            feat_hybrid_flat = self.aux_ln[i](feat_hybrid_flat)
+
+             # --- Aux Dropout (Feature-Dropout auf Aux-Branch) ---
+            if self.training:
+                aux_mask = (torch.rand(B, 1, 1, device=feat_hybrid_flat.device) > 0.2).float()
+                feat_hybrid_flat = feat_hybrid_flat * aux_mask  # shape: (B, N, C)
+
             attn_out = self.cross_attn_layers[i](rgb_flat, feat_hybrid_flat)
-            alpha = torch.sigmoid(self.alpha_logits[i])
-            fused = rgb_flat + alpha * attn_out
+
+            fused = rgb_flat + attn_out
+            fused = self.fused_ln[i](fused)
 
             # upscaling via interpolation 
             fused = fused.transpose(1, 2).view(B, C, int(H*self.downsample_factor), int(W*self.downsample_factor))

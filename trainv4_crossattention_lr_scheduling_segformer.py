@@ -171,8 +171,8 @@ def main():
     else:
         ema = None
 
-    # loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
-    loss_fn = CombinedLoss(ce_weight=0.5, dice_weight=0.5, ignore_index=255)
+    loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
+    # loss_fn = CombinedLoss(ce_weight=0.5, dice_weight=0.5, ignore_index=255)
 
     for epoch in range(1 + epoch_modifier, EPOCHS + 1 + epoch_modifier):
          
