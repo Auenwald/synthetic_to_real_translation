@@ -7,23 +7,61 @@ from datasets.dataset_synthia import *
 from datasets.dataset_synthia_style import *
 from datasets.dataset_bdd import *
 import numpy as np
-import utils
+import utils 
 from torch_ema import ExponentialMovingAverage
 import pytorch_warmup as  warmup
 import model_utils
 from segformer_crossattention_wrapper import *
-from torchmetrics.functional import jaccard_index
-from segformer_pytorch import Segformer
-from transformers import SegformerModel, SegformerConfig, SegformerForSemanticSegmentation
-import random
+import os
+import json
 from losses import CombinedLoss
-from transformers.modeling_outputs import SemanticSegmenterOutput
 from torch.optim.lr_scheduler import CosineAnnealingLR, LambdaLR
+import os
+import math
+
+# import torchmetrics
+from torchmetrics.functional import jaccard_index
+import random
+
 # os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:8"
-import torch.nn.functional as F
+SEED = 0
+
+scores = {}
+best_val_mean_IoU = 0
+num_classes = 16
+
+torch.manual_seed(SEED)
+torch.cuda.manual_seed_all(SEED)
+np.random.seed(SEED)
+random.seed(SEED)
+# torch.use_deterministic_algorithms(True)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
+def init_parser(parser):
+    parser.add_argument('--source_path', default='./synthia', required=True, help='Path to the source dataset folder')
+    parser.add_argument('--target_path', type=str, default='./cityscapes', help='path of the target data set')
+    parser.add_argument('--model_name', type=str, default="segformer") # deeplab is also possible
+    parser.add_argument('--optimizer', '-o', type=str, default='Adam', help ='Optimizer to use | SGD, Adam')
+    parser.add_argument('--lr', type=float, default=1.0e-5, help='learning rate')
+    parser.add_argument('--weight_decay', type=float, default=0.0, help='weight decay')
+    parser.add_argument('--batch_size', type=int, default=1, help='batch size')
+    parser.add_argument('--epochs', type=int, default=1, help='number of epochs')
+    parser.add_argument('--use_logging', type=lambda x: x == 'True', default=False)
+    parser.add_argument('--log_file', type=str, default='./logs/log.txt', help='path of the log file')
+    parser.add_argument('--weight_averaging', type=lambda x: x == 'True', default=False)
+    parser.add_argument('--averaging_interval', type=int, default=20, help="Specify the number of iterations for applying weight averaging")
+
+    parser.add_argument('--skip_val_source', type=lambda x: x == 'True', default=False)
+    parser.add_argument('--decay_factor', type=float, default=0.999, help='Specify the decay factor that is used in EMA')
+    # parser.add_argument('--resume', type=bool, default=False, help='start from an existing checkpoint')
+    parser.add_argument('--gpu', type=int, default=0, help="Specify the gpu used for training")
+    parser.add_argument('--use_synthia_shapes', type=lambda x: x == 'True', default=False)
+    parser.add_argument('--train_print_steps', type=int, default=50, help="Specify the number of iterations between two mIoU prints during training")
 
 
-def get_optimizer_and_scheduler(model, optimizer_name='adamw', lr=1e-5, total_steps=10000, warmup_steps=500):
+
+def get_optimizer_and_scheduler(model, optimizer_name='adamw', lr=1e-5, total_steps=10000, warmup_steps=500, schedule=None, power=0.9, min_lr=1e-6):
     """
     optimizer_name: 'sgd', 'adam', 'adamw'
     total_steps: Gesamtzahl der Trainingsschritte
@@ -64,53 +102,21 @@ def get_optimizer_and_scheduler(model, optimizer_name='adamw', lr=1e-5, total_st
         optimizer = torch.optim.AdamW(param_groups, weight_decay=weight_decay)
         print("Use AdamW")
 
-    # cos. annealing with scheduling
-    def lr_lambda(current_step):
-        if current_step < warmup_steps:
-            return float(current_step) / float(max(1, warmup_steps))
+    # LR-Scheduler
+    def lr_lambda(step):
+        if schedule is None:
+            return 1.0
+        progress = float(step) / float(max(1, total_steps))
+        if schedule == 'cosine':
+            factor = 0.5 * (1.0 + math.cos(math.pi * progress))
+        elif schedule == 'poly':
+            factor = (1 - progress) ** power
         else:
-            progress = float(current_step - warmup_steps) / float(max(1, total_steps - warmup_steps))
-            return 0.5 * (1.0 + torch.cos(torch.tensor(progress * 3.1415926535)))
+            factor = 1.0
+        return max(factor, min_lr / lr)
 
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     return optimizer, scheduler
-
-
-SEED = 0
-
-scores = {}
-best_val_mean_IoU = 0
-num_classes = 16
-
-torch.manual_seed(SEED)
-torch.cuda.manual_seed_all(SEED)
-np.random.seed(SEED)
-random.seed(SEED)
-# torch.use_deterministic_algorithms(True)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
-
-def init_parser(parser):
-    parser.add_argument('--source_path', default='./synthia', required=True, help='Path to the source dataset folder')
-    parser.add_argument('--target_path', type=str, default='./cityscapes', help='path of the target data set')
-    parser.add_argument('--model_name', type=str, default="segformer") # deeplab is also possible
-    parser.add_argument('--optimizer', '-o', type=str, default='Adam', help ='Optimizer to use | SGD, Adam')
-    parser.add_argument('--lr', type=float, default=1.0e-5, help='learning rate')
-    parser.add_argument('--weight_decay', type=float, default=0.0, help='weight decay')
-    parser.add_argument('--batch_size', type=int, default=1, help='batch size')
-    parser.add_argument('--epochs', type=int, default=1, help='number of epochs')
-    parser.add_argument('--use_logging', type=lambda x: x == 'True', default=False)
-    parser.add_argument('--log_file', type=str, default='./logs/log.txt', help='path of the log file')
-    parser.add_argument('--weight_averaging', type=lambda x: x == 'True', default=False)
-    parser.add_argument('--averaging_interval', type=int, default=20, help="Specify the number of iterations for applying weight averaging")
-
-    parser.add_argument('--skip_val_source', type=lambda x: x == 'True', default=False)
-    parser.add_argument('--decay_factor', type=float, default=0.999, help='Specify the decay factor that is used in EMA')
-    # parser.add_argument('--resume', type=bool, default=False, help='start from an existing checkpoint')
-    parser.add_argument('--gpu', type=int, default=0, help="Specify the gpu used for training")
-    parser.add_argument('--use_synthia_shapes', type=lambda x: x == 'True', default=False)
-    parser.add_argument('--train_print_steps', type=int, default=50, help="Specify the number of iterations between two mIoU prints during training")
-
 
 
 def main():
@@ -152,26 +158,23 @@ def main():
     # model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b1-finetuned-ade-512-512", ignore_mismatched_sizes=True, num_labels=num_classes)
     
 
+    # model = model_utils.get_model_by_name(MODEL_NAME, num_classes)
     model = SegformerCrossAttentionWrapper(segformer_name='nvidia/mit-b5')
-    model = model.to(DEVICE)
 
+    model = model.to(DEVICE)
+   
     optim, scheduler = get_optimizer_and_scheduler(model, optimizer_name=args.optimizer.lower(), lr=LR, total_steps=len(source_train_data_loader)*EPOCHS)
+
 
     if WEIGHT_AVERAGING:
         ema = ExponentialMovingAverage(filter(lambda p: p.requires_grad, model.parameters()), decay=DECAY_FACTOR)
     else:
         ema = None
 
-
-    loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
-    # loss_fn = CombinedLoss(ce_weight=0.5, dice_weight=0.5, ignore_index=255)
+    # loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
+    loss_fn = CombinedLoss(ce_weight=0.5, dice_weight=0.5, ignore_index=255)
 
     for epoch in range(1 + epoch_modifier, EPOCHS + 1 + epoch_modifier):
-         
-        scores[TARGET_DATASET_NAME][epoch] = []
-        scores[TARGET_DATASET_NAME + "-ema"][epoch] = []
-        scores[SOURCE_DATASET_NAME][epoch] = []
-        scores[SOURCE_DATASET_NAME + "-ema"][epoch] = []
          
         train(source_train_data_loader, model, optim, loss_fn, DEVICE, ema, scheduler, PRINT_INTERVAL, AVERAGING_INTERVAL, SOURCE_DATASET_NAME)
 
@@ -181,19 +184,19 @@ def main():
         if WEIGHT_AVERAGING:
             with ema.average_parameters():
                 if not SKIP_VAL_SOURCE:
-                    validate(source_val_data_loader, model, DEVICE, True, f'{SOURCE_DATASET_NAME}', epoch, EPOCHS)
-                validate(target_val_data_loader, model, DEVICE, True, f'{TARGET_DATASET_NAME}', epoch, EPOCHS)
+                    validate(source_val_data_loader, model, DEVICE, LOG_PATH, True, f'{SOURCE_DATASET_NAME}', epoch, EPOCHS)
+                validate(target_val_data_loader, model, DEVICE, LOG_PATH, True, f'{TARGET_DATASET_NAME}', epoch, EPOCHS)
         
         if not SKIP_VAL_SOURCE:
-            validate(source_val_data_loader, model, DEVICE, False, f'{SOURCE_DATASET_NAME}', epoch, EPOCHS)
-        validate(target_val_data_loader, model, DEVICE, False, f'{TARGET_DATASET_NAME}', epoch, EPOCHS)
+            validate(source_val_data_loader, model, DEVICE, LOG_PATH, False, f'{SOURCE_DATASET_NAME}', epoch, EPOCHS)
+        validate(target_val_data_loader, model, DEVICE, LOG_PATH, False, f'{TARGET_DATASET_NAME}', epoch, EPOCHS)
         
 
-        write_scores_to_log_file(LOG_PATH, epoch, WEIGHT_AVERAGING, SOURCE_DATASET_NAME, TARGET_DATASET_NAME)
+        # write_scores_to_log_file(LOG_PATH, epoch, WEIGHT_AVERAGING, SOURCE_DATASET_NAME, TARGET_DATASET_NAME)
     
     # TODO: save model if necessary (meanIOU > bestMeanIOU)
 
-def train(train_loader, model, optim, loss_fn, DEVICE, ema, lr_scheduler, PRINT_INTERVAL, AVERAGING_INTERVAL, SOURCE_DATASET_NAME):
+def train(train_loader, model, optim, loss_fn, DEVICE, ema, scheduler, PRINT_INTERVAL, AVERAGING_INTERVAL, SOURCE_DATASET_NAME):
     model.train()
     for i, (data, targets) in enumerate(train_loader):
             
@@ -219,7 +222,7 @@ def train(train_loader, model, optim, loss_fn, DEVICE, ema, lr_scheduler, PRINT_
         optim.zero_grad()
         loss.backward()
         optim.step()
-        lr_scheduler.step()
+        scheduler.step()
 
         if i > 0 and i % AVERAGING_INTERVAL == 0:
             if ema:
@@ -232,44 +235,69 @@ def train(train_loader, model, optim, loss_fn, DEVICE, ema, lr_scheduler, PRINT_
             print(f'[train-{SOURCE_DATASET_NAME}] Progress: {i}/{len(train_loader)}, mean-IoU: {mean_iou:.2f}, lr: {optim.param_groups[0]["lr"]}')
  
     
-def validate(val_loader, model, DEVICE, applied_ema, dataset_name, epoch, max_epochs):
-     model.eval()
-     suffix = "-ema" if applied_ema else ""
-     dataset_key = dataset_name + suffix
+def validate(val_loader, model, DEVICE, LOG_PATH, applied_ema, dataset_name, epoch, max_epochs):
+    model.eval()
+    suffix = "-ema" if applied_ema else ""
+    dataset_key = dataset_name + suffix
 
-     for idx, (data, targets) in enumerate(val_loader):
-        
+    all_preds = []
+    all_targets = []
+    
+
+    for idx, (data, targets) in enumerate(val_loader):
+    
         if data is None or targets is None:
             continue
 
         data, targets = data.to(DEVICE), targets.to(DEVICE).long()
 
         with torch.no_grad():
-             output = model_utils.get_logits(model, data)
-             output = torch.nn.functional.interpolate(output, size=utils.get_image_size(dataset_name), mode='bilinear', align_corners=False)
+                output = model_utils.get_logits(model, data)
+                output = torch.nn.functional.interpolate(output, size=utils.get_image_size(dataset_name), mode='bilinear', align_corners=False)
 
-        preds = torch.argmax(output, dim=1)          
-        mean_iou = jaccard_index(task='multiclass', ignore_index=255, num_classes=num_classes, preds=preds, target=targets) * 100
-
-        # write into scores
-        print(f'[val-{dataset_name}{suffix}] - Epoch: {epoch}/{max_epochs} '
-              f'Progress: {idx}/{len(val_loader)}, mean-IoU: {mean_iou:.2f}')
+        preds = torch.argmax(output, dim=1)     
+        all_preds.append(preds)
+        all_targets.append(targets)    
         
-        scores[dataset_key][epoch].append(round(mean_iou.item(), 3))
 
+        if idx % 10 == 0:
+            print(f'[val-{dataset_name}{suffix}] - Epoch: {epoch}/{max_epochs} '
+                f'Progress: {idx + 1}/{len(val_loader)}')
+            
+        
+    all_preds = torch.cat(all_preds, dim=0)
+    all_targets = torch.cat(all_targets, dim=0)   
 
-def write_scores_to_log_file(LOG_PATH, epoch, APPLY_AVERAGING, SOURCE_DATASET_NAME, TARGET_DATASET_NAME):
-
-    datasets_to_log = [TARGET_DATASET_NAME, SOURCE_DATASET_NAME]
-
-    if APPLY_AVERAGING:
-        datasets_to_log += [f'{TARGET_DATASET_NAME}-ema', f'{SOURCE_DATASET_NAME}-ema']
-
-    with open(LOG_PATH, 'a') as f:
-        for dataset_key in datasets_to_log:
-            scores_for_epoch = scores[dataset_key][epoch]
-            line = f"{dataset_key} {epoch} " + " ".join(str(iou) for iou in scores_for_epoch) + "\n"
-            f.write(line)
+    miou, per_class_miou = utils.compute_mIoU_and_per_class(all_preds, all_targets, num_classes=num_classes) 
     
+
+
+    LOG_JSON_PATH = LOG_PATH
+    scores = {}
+
+    if LOG_JSON_PATH and os.path.exists(LOG_JSON_PATH) and os.path.getsize(LOG_JSON_PATH) > 0:
+        try:
+            with open(LOG_JSON_PATH, 'r') as f:
+                    scores = json.load(f)
+        except json.JSONDecodeError:
+            print(f"Warnung: {LOG_JSON_PATH} ist leer oder ungültig. Starte mit leerem Dict.")
+
+    if dataset_key not in scores:
+        scores[dataset_key] = {}
+
+    # Epoch-Daten immer setzen
+    scores[dataset_key][str(epoch)] = {
+        "mean_iou": round(miou * 100, 3),
+        "per_class_iou": {str(k): round(v*100, 3) for k, v in per_class_miou.items()}
+    }
+
+     # JSON zurückschreiben
+    if LOG_JSON_PATH:
+        with open(LOG_JSON_PATH, 'w') as f:
+            json.dump(scores, f, indent=4)
+
+    print(f'[val-{dataset_name}{suffix}] - Epoch: {epoch}/{max_epochs} - mean-IoU: {miou*100:.2f}')
+
+
 if __name__ == '__main__':
     main()

@@ -88,7 +88,7 @@ class SegformerCrossAttentionWrapper(nn.Module):
             padding=3
         )
 
-        # self.feature_dropout = FeatureDropout(drop_prob=0.3, mode="branch")
+        self.feature_dropout = FeatureDropout(drop_prob=0.3, mode="branch")
 
         self.cross_attn_layers = nn.ModuleList([
             MultiHeadCrossAttention(in_dim=c, attn_dim=d) 
@@ -107,8 +107,8 @@ class SegformerCrossAttentionWrapper(nn.Module):
         # image_rgb: [B, C, H, W]
         fft = torch.fft.fft2(image_rgb)                # komplexes Spektrum
         fft_shift = torch.fft.fftshift(fft, dim=(-2,-1))  # Zero-Freq ins Zentrum
-        magnitude = torch.abs(fft_shift)               # Betrag
-        log_mag = torch.log1p(magnitude)               # log-Skalierung
+        magnitude = torch.abs(fft_shift) 
+        log_mag = torch.log1p(magnitude)              
         # Normierung für Encoder
         log_mag = (log_mag - log_mag.mean()) / (log_mag.std() + 1e-6)
         return log_mag
@@ -189,7 +189,7 @@ class SegformerCrossAttentionWrapper(nn.Module):
         else:
             feat_hybrid = utils.multiscale_scharr_edges(image_rgb)
 
-        # rGB hidden states
+        # rgb hidden states
         rgb_outputs = self.encoder_rgb(image_rgb, output_hidden_states=True)
         rgb_hidden_states = rgb_outputs.hidden_states
 
@@ -209,7 +209,7 @@ class SegformerCrossAttentionWrapper(nn.Module):
             B, C, H, W = rgb_hidden_states[i].shape
 
             # feature dropout
-            # rgb_hidden_states[i], feat_hybrid_hidden_states[i] = self.feature_dropout(rgb_hidden_states[i], feat_hybrid_hidden_states[i])
+            rgb_hidden_states[i], feat_hybrid_hidden_states[i] = self.feature_dropout(rgb_hidden_states[i], feat_hybrid_hidden_states[i])
 
             # # downsampling
             rgb_small = F.interpolate(rgb_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
