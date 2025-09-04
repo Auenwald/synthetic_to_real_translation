@@ -255,6 +255,7 @@ class SegformerCrossAttentionWrapper(nn.Module):
             fused = F.interpolate(fused, size=(H, W), mode='bilinear', align_corners=False)
             cross_features.append(fused)
 
+
         # decoder
         logits = self.decoder(cross_features)
 
