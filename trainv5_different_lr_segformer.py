@@ -16,6 +16,7 @@ import os
 import json
 from losses import CombinedLoss
 import math
+from torch.amp import autocast, GradScaler
 
 # import torchmetrics
 from torchmetrics.functional import jaccard_index
@@ -184,56 +185,61 @@ def main():
             validate(loader, model, DEVICE, LOG_PATH, False, target_name, epoch, EPOCHS)
 
 
+# Train-Funktion mit AMP und Multi-GPU-kompatibel
 def train(train_loader, model, optim, loss_fn, DEVICE, ema, scheduler, PRINT_INTERVAL, AVERAGING_INTERVAL, SOURCE_DATASET_NAME):
     model.train()
+    
     for i, (data, targets) in enumerate(train_loader):
-            
         if data is None or targets is None:
             continue
         
         data, targets = data.to(DEVICE), targets.to(DEVICE).long()
-
-
-        # wrapper for handling deepLabv3 and SegFormer
-        logits = model_utils.get_logits(model, data)
-
-        h, w = data.shape[2], data.shape[3]
-        logits = torch.nn.functional.interpolate(logits, size=(h, w), mode='bilinear', align_corners=False)
-    
-        loss = loss_fn(logits, targets)
-
-        # optimizer area
+        
         optim.zero_grad()
-        loss.backward()
-        optim.step()
+        
+        # AMP Kontext
+        with autocast(device_type='cuda'):
+            logits = model_utils.get_logits(model, data)
+            h, w = data.shape[2], data.shape[3]
+            logits = torch.nn.functional.interpolate(logits, size=(h, w), mode='bilinear', align_corners=False)
+            loss = loss_fn(logits, targets)
+
+        # Scaled backward
+        scaler.scale(loss).backward()
+        scaler.step(optim)
+        scaler.update()
         scheduler.step()
 
         # EMA Update seltener (speicherschonend)
         if i > 0 and i % AVERAGING_INTERVAL == 0 and ema:
             ema.update()
 
+        # Print
         if i > 0 and i % PRINT_INTERVAL == 0:
-            preds = torch.argmax(logits, dim=1)
-            mean_iou = jaccard_index(task='multiclass', ignore_index=255, num_classes=num_classes, preds=preds, target=targets) * 100
-            print(f'[train-{SOURCE_DATASET_NAME}] Progress: {i}/{len(train_loader)}, mean-IoU: {mean_iou:.2f}, lr: {optim.param_groups[0]["lr"]}')
+            with torch.no_grad():
+                preds = torch.argmax(logits, dim=1)
+                mean_iou = jaccard_index(
+                    task='multiclass', ignore_index=255,
+                    num_classes=num_classes, preds=preds, target=targets
+                ) * 100
+                print(f'[train-{SOURCE_DATASET_NAME}] Progress: {i}/{len(train_loader)}, '
+                      f'mean-IoU: {mean_iou:.2f}, lr: {optim.param_groups[0]["lr"]}')
 
-    
+# Validate-Funktion mit AMP & Multi-GPU
 def validate(val_loader, model, DEVICE, LOG_PATH, applied_ema, dataset_name, epoch, max_epochs):
     model.eval()
     suffix = "-ema" if applied_ema else ""
     dataset_key = dataset_name + suffix
 
-    # Confusion Matrix initialisieren
     confusion_matrix = torch.zeros(num_classes, num_classes, dtype=torch.int64, device=DEVICE)
 
     for idx, (data, targets) in enumerate(val_loader):
-
         if data is None or targets is None:
             continue
 
         data, targets = data.to(DEVICE), targets.to(DEVICE).long()
 
-        with torch.no_grad():
+        with torch.no_grad(), autocast(device_type='cuda'):  # AMP im Inference
             output = model_utils.get_logits(model, data)
             output = torch.nn.functional.interpolate(
                 output,
@@ -241,40 +247,33 @@ def validate(val_loader, model, DEVICE, LOG_PATH, applied_ema, dataset_name, epo
                 mode='bilinear',
                 align_corners=False
             )
-
         preds = torch.argmax(output, dim=1)
-
-        # update confusion matrix
         confusion_matrix += utils.torch_fast_hist(preds, targets, num_classes, device=DEVICE)
 
         if idx % 10 == 0:
             print(f'[val-{dataset_name}{suffix}] - Epoch: {epoch}/{max_epochs} '
                   f'Progress: {idx + 1}/{len(val_loader)}')
 
-    # calculating miou via confusion matrix
     miou, per_class_miou = utils.compute_mIoU_and_per_class_from_hist(confusion_matrix)
 
-
+    # Logging JSON
     LOG_JSON_PATH = LOG_PATH
     scores = {}
-
     if LOG_JSON_PATH and os.path.exists(LOG_JSON_PATH) and os.path.getsize(LOG_JSON_PATH) > 0:
         try:
             with open(LOG_JSON_PATH, 'r') as f:
-                    scores = json.load(f)
+                scores = json.load(f)
         except json.JSONDecodeError:
             print(f"Warnung: {LOG_JSON_PATH} ist leer oder ungültig. Starte mit leerem Dict.")
 
     if dataset_key not in scores:
         scores[dataset_key] = {}
 
-    # set logging data (scores)
     scores[dataset_key][str(epoch)] = {
         "mean_iou": round(miou * 100, 3),
         "per_class_iou": {str(k): round(v*100, 3) for k, v in per_class_miou.items()}
     }
 
-     # # write json back to file
     if LOG_JSON_PATH:
         with open(LOG_JSON_PATH, 'w') as f:
             json.dump(scores, f, indent=4)
