@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class DiceLoss(nn.Module):
-    def __init__(self, smooth=1e-5, ignore_index=None):
+    def __init__(self, smooth=1e-5, ignore_index=None, class_weights=None):
         super().__init__()
         self.smooth = smooth
         self.ignore_index = ignore_index
@@ -32,6 +32,22 @@ class DiceLoss(nn.Module):
 
         dice = (2*intersection + self.smooth) / (union + self.smooth)
         return 1 - dice.mean()
+    
+
+class FocalLoss(nn.Module):
+    def __init__(self, gamma=2.0, alpha=None, ignore_index=255):
+        super().__init__()
+        self.gamma = gamma
+        self.alpha = alpha
+        self.ce = nn.CrossEntropyLoss(ignore_index=ignore_index, reduction="none")
+
+    def forward(self, logits, targets):
+        ce_loss = self.ce(logits, targets)  # [B,H,W]
+        pt = torch.exp(-ce_loss)
+        focal = ((1-pt)**self.gamma) * ce_loss
+        if self.alpha is not None:
+            focal = self.alpha * focal
+        return focal.mean()
 
 
 class CombinedLoss(nn.Module):
@@ -46,3 +62,17 @@ class CombinedLoss(nn.Module):
         ce_loss = self.ce(logits, targets)
         dice_loss = self.dice(logits, targets)
         return self.ce_weight * ce_loss + self.dice_weight * dice_loss
+
+
+class CombinedLossV2(nn.Module):
+    def __init__(self, dice_weight=0.5, focal_weight=0.5, ignore_index=255, class_weights=None):
+        super().__init__()
+        self.focal = FocalLoss(ignore_index=ignore_index)
+        self.dice = DiceLoss(ignore_index=ignore_index, class_weights=class_weights)
+        self.dice_weight = dice_weight
+        self.focal_weight = focal_weight
+
+    def forward(self, logits, targets):
+        focal_loss = self.focal(logits, targets)
+        dice_loss = self.dice(logits, targets)
+        return self.focal_weight * focal_loss + self.dice_weight * dice_loss

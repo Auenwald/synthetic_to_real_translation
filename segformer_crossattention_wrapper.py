@@ -5,6 +5,10 @@ import torch
 import torch.nn.functional as F
 import kornia
 from torch_dct import dct_2d
+from torch.utils.checkpoint import checkpoint
+from torch.cuda.amp import autocast
+
+
 
 class MultiHeadCrossAttention(nn.Module):
     def __init__(self, in_dim, attn_dim=128, num_heads=4):
@@ -68,8 +72,20 @@ class SegformerCrossAttentionWrapper(nn.Module):
                  cross_attn_dims=[64, 128, 256, 384], 
                  downsample_factor=0.5,
                    num_classes=16,
-                   hybrid_out_ch=3):
+                   mode="edge"):
         super().__init__()
+
+        if mode == "edge" or mode == "fft" or mode == "dct":
+            self.hybrid_out_ch = 1
+        elif mode == "lab" or mode == "fft_dct_edge":
+            self.hybrid_out_ch = 3
+        elif mode == "fft_dct":
+            self.hybrid_out_ch = 2
+        else:
+            self.hybrid_out_ch = 1
+            print("Mode unknown:", mode)
+
+        self.mode = mode
 
         # rgb branch
         base_model_rgb = SegformerForSemanticSegmentation.from_pretrained(segformer_name, num_labels=num_classes)
@@ -81,12 +97,13 @@ class SegformerCrossAttentionWrapper(nn.Module):
 
         # adjust input embedding dim to number of modalities + channels
         self.encoder_feat_hybrid.patch_embeddings[0].proj = nn.Conv2d(
-            in_channels=hybrid_out_ch,
+            in_channels=self.hybrid_out_ch,
             out_channels=self.encoder_feat_hybrid.config.hidden_sizes[0],
             kernel_size=7,
             stride=4,
             padding=3
         )
+
 
         # self.feature_dropout = FeatureDropout(drop_prob=0.3, mode="branch")
 
@@ -99,13 +116,6 @@ class SegformerCrossAttentionWrapper(nn.Module):
             nn.Parameter(torch.tensor(-0.2, dtype=torch.float32))
             for _ in range(len(config.hidden_sizes))
         ])
-
-        hidden_sizes = self.encoder_rgb.config.hidden_sizes  # z.B. [64,128,256,384]
-
-        # LayerNorms für jede Ebene definieren
-        self.rgb_ln = nn.ModuleList([nn.LayerNorm(h) for h in hidden_sizes])
-        self.aux_ln = nn.ModuleList([nn.LayerNorm(h) for h in hidden_sizes])
-        self.fused_ln = nn.ModuleList([nn.LayerNorm(h) for h in hidden_sizes])
 
         self.downsample_factor = downsample_factor
 
@@ -164,7 +174,7 @@ class SegformerCrossAttentionWrapper(nn.Module):
         fft_1ch = self.fft_magnitude_1ch(image_rgb)  # [B, 1, H, W]
         dct_1ch = self.dct_map_1ch(image_rgb)        # [B, 1, H, W]
         
-        # stack → 2 Kanäle
+        # stack → 2 channels
         combined = torch.cat([fft_1ch, dct_1ch], dim=1)  # [B, 2, H, W]
         return combined
 
@@ -173,28 +183,27 @@ class SegformerCrossAttentionWrapper(nn.Module):
         dct_1ch = self.dct_map_1ch(image_rgb)        # [B, 1, H, W]
         edge_1ch = utils.multiscale_scharr_edges(image_rgb)
 
-        # stack → 3 Kanäle
-        combined = torch.cat([fft_1ch, dct_1ch, edge_1ch], dim=1)  # [B, 2, H, W]
+        # stack → 3 channels
+        combined = torch.cat([fft_1ch, dct_1ch, edge_1ch], dim=1)  # [B, 3, H, W]
         return combined
+    
 
 
-    def forward(self, image_rgb, labels=None, mode="lab"):
-
-        # image_lab = kornia.color.rgb_to_lab(image_rgb)
-        # edge_map = utils.multiscale_scharr_edges(image_rgb)
-
-        if mode == "fft":
+    def forward(self, image_rgb, labels=None):
+        image_rgb = image_rgb.float()
+        if self.mode == "fft":
             feat_hybrid = self.fft_magnitude_1ch(image_rgb)
-        elif mode == "dct":
+        elif self.mode == "dct":
             feat_hybrid = self.dct_map_1ch(image_rgb)
-        elif mode == "lab":
+        elif self.mode == "lab":
             feat_hybrid = kornia.color.rgb_to_lab(image_rgb)
-        elif mode == "fft_dct":
+        elif self.mode == "fft_dct":
             feat_hybrid = self.fft_dct_stack(image_rgb)
-        elif mode == "fft_dct_edge":
+        elif self.mode == "fft_dct_edge":
             feat_hybrid = self.fft_dct_edge_stack(image_rgb)
         else:
             feat_hybrid = utils.multiscale_scharr_edges(image_rgb)
+    
 
         # rgb hidden states
         rgb_outputs = self.encoder_rgb(image_rgb, output_hidden_states=True)
@@ -205,37 +214,12 @@ class SegformerCrossAttentionWrapper(nn.Module):
         feat_hybrid_hidden_states = feat_hybrid_outputs.hidden_states
 
         
-
         cross_features = []
 
         # wrap into a list - necessary for feature dropout
         rgb_hidden_states = list(rgb_hidden_states)
         feat_hybrid_hidden_states = list(feat_hybrid_hidden_states)
 
-        # for i in range(4):
-        #     B, C, H, W = rgb_hidden_states[i].shape
-
-        #     # feature dropout
-        #     # rgb_hidden_states[i], feat_hybrid_hidden_states[i] = self.feature_dropout(rgb_hidden_states[i], feat_hybrid_hidden_states[i])
-
-        #     # # downsampling
-        #     rgb_small = F.interpolate(rgb_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
-        #     feat_hybrid_small = F.interpolate(feat_hybrid_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
-
-        #     # flattening for attention
-        #     rgb_flat = rgb_small.flatten(2).transpose(1, 2)  # B, N, C
-        #     feat_hybrid_flat = feat_hybrid_small.flatten(2).transpose(1, 2)
-
-        #     # applying cross.attention
-        #     attn_out = self.cross_attn_layers[i](rgb_flat, feat_hybrid_flat)
-        #     alpha = torch.sigmoid(self.alpha_logits[i])
-        #     fused = rgb_flat + alpha * attn_out
-
-        #     # upscaling via interpolation 
-        #     fused = fused.transpose(1, 2).view(B, C, int(H*self.downsample_factor), int(W*self.downsample_factor))
-        #     fused = F.interpolate(fused, size=(H, W), mode='bilinear', align_corners=False)
-        #     cross_features.append(fused)
-        
 
         for i in range(4):
             B, C, H, W = rgb_hidden_states[i].shape
@@ -249,28 +233,56 @@ class SegformerCrossAttentionWrapper(nn.Module):
 
             # flattening for attention
             rgb_flat = rgb_small.flatten(2).transpose(1, 2)  # B, N, C
-            feat_hybrid_flat = feat_hybrid_small.flatten(2).transpose(1, 2)
+            feat_hybrid_flat = feat_hybrid_small.flatten(2).transpose(1, 2) 
 
-            # applying cross.attention
-            rgb_flat = self.rgb_ln[i](rgb_flat)
-            feat_hybrid_flat = self.aux_ln[i](feat_hybrid_flat)
+             # ---- StyleMix nur auf frühen Stages (i = 0 oder 1) ----
+            # if self.training and i < 2 and torch.rand(1) < 0.5:
+            #     rgb_small = self.style_mix(rgb_small)
+
 
              # --- Aux Dropout (Feature-Dropout auf Aux-Branch) ---
-            if self.training:
-                aux_mask = (torch.rand(B, 1, 1, device=feat_hybrid_flat.device) > 0.2).float()
-                feat_hybrid_flat = feat_hybrid_flat * aux_mask  # shape: (B, N, C)
+            # if self.training:
+            #     aux_mask = (torch.rand(B, 1, 1, device=feat_hybrid_flat.device) > 0.2).float()
+            #     feat_hybrid_flat = feat_hybrid_flat * aux_mask  # shape: (B, N, C)
 
+            # applying cross.attention
             attn_out = self.cross_attn_layers[i](rgb_flat, feat_hybrid_flat)
 
-            fused = rgb_flat + attn_out
-            fused = self.fused_ln[i](fused)
+            fused = rgb_flat + attn_out  
 
             # upscaling via interpolation 
             fused = fused.transpose(1, 2).view(B, C, int(H*self.downsample_factor), int(W*self.downsample_factor))
             fused = F.interpolate(fused, size=(H, W), mode='bilinear', align_corners=False)
             cross_features.append(fused)
 
-        # Decoder
+        # decoder
         logits = self.decoder(cross_features)
 
         return logits
+
+
+
+
+    
+
+    def style_mix(self, f):
+        """
+        f: (B, C, H, W) Feature Map
+        mischt mean/std über Batch-Dimension
+        """
+        B, C, H, W = f.shape
+        mean = f.mean(dim=[2,3], keepdim=True)
+        std  = f.std(dim=[2,3], keepdim=True)
+
+        normed = (f - mean) / (std + 1e-6)
+
+        # Batch-Shuffle
+        perm = torch.randperm(B)
+        mean2, std2 = mean[perm], std[perm]
+
+        # Mischen mit Lam (pro Sample unterschiedlich)
+        lam = torch.rand(B, 1, 1, 1, device=f.device)
+        mixed_mean = lam * mean + (1 - lam) * mean2
+        mixed_std  = lam * std + (1 - lam) * std2
+
+        return normed * mixed_std + mixed_mean

@@ -23,7 +23,6 @@ import random
 # os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:8"
 SEED = 0
 
-scores = {}
 best_val_mean_IoU = 0
 num_classes = 16
 
@@ -80,9 +79,6 @@ def main():
     DEVICE = f'cuda:{GPU}' if torch.cuda.is_available() else 'cpu'
     print(f'Found the following device: {DEVICE}')
 
-    # extend scores depending on source and target dataset
-    scores[TARGET_DATASET_NAME], scores[TARGET_DATASET_NAME + "-ema"] = {}, {}
-    scores[SOURCE_DATASET_NAME], scores[SOURCE_DATASET_NAME + "-ema"] = {}, {}
 
     # define the dataloader
     source_train_data_loader = utils.get_dataloader_from_dataset(SOURCE_PATH, SOURCE_DATASET_NAME, 'train', batch_size=BATCH_SIZE, shuffle=True, use_synthia_shapes=USE_SYNTHIA_SHAPES)
@@ -155,7 +151,7 @@ def train(train_loader, model, optim, loss_fn, DEVICE, ema, PRINT_INTERVAL, AVER
             continue
 
         h, w = data.shape[2], data.shape[3]
-        logits = torch.nn.functional.interpolate(logits, size=(h, w), mode='bilinear')
+        logits = torch.nn.functional.interpolate(logits, size=(h, w), mode='bilinear', align_corners=False)
     
         loss = loss_fn(logits, targets)
 
@@ -180,36 +176,36 @@ def validate(val_loader, model, DEVICE, LOG_PATH, applied_ema, dataset_name, epo
     suffix = "-ema" if applied_ema else ""
     dataset_key = dataset_name + suffix
 
-    all_preds = []
-    all_targets = []
-    
+    # Confusion Matrix initialisieren
+    confusion_matrix = torch.zeros(num_classes, num_classes, dtype=torch.int64, device=DEVICE)
 
     for idx, (data, targets) in enumerate(val_loader):
-    
+
         if data is None or targets is None:
             continue
 
         data, targets = data.to(DEVICE), targets.to(DEVICE).long()
 
         with torch.no_grad():
-                output = model_utils.get_logits(model, data)
-                output = torch.nn.functional.interpolate(output, size=utils.get_image_size(dataset_name), mode='bilinear', align_corners=False)
+            output = model_utils.get_logits(model, data)
+            output = torch.nn.functional.interpolate(
+                output,
+                size=utils.get_image_size(dataset_name),
+                mode='bilinear',
+                align_corners=False
+            )
 
-        preds = torch.argmax(output, dim=1)     
-        all_preds.append(preds)
-        all_targets.append(targets)    
-        
+        preds = torch.argmax(output, dim=1)
+
+        # update confusion matrix
+        confusion_matrix += utils.torch_fast_hist(preds, targets, num_classes, device=DEVICE)
 
         if idx % 10 == 0:
             print(f'[val-{dataset_name}{suffix}] - Epoch: {epoch}/{max_epochs} '
-                f'Progress: {idx + 1}/{len(val_loader)}')
-            
-        
-    all_preds = torch.cat(all_preds, dim=0)
-    all_targets = torch.cat(all_targets, dim=0)   
+                  f'Progress: {idx + 1}/{len(val_loader)}')
 
-    miou, per_class_miou = utils.compute_mIoU_and_per_class(all_preds, all_targets, num_classes=num_classes) 
-    
+    # mIoU aus Confusion Matrix berechnen
+    miou, per_class_miou = utils.compute_mIoU_and_per_class_from_hist(confusion_matrix)
 
 
     LOG_JSON_PATH = LOG_PATH
@@ -238,6 +234,7 @@ def validate(val_loader, model, DEVICE, LOG_PATH, applied_ema, dataset_name, epo
 
     print(f'[val-{dataset_name}{suffix}] - Epoch: {epoch}/{max_epochs} - mean-IoU: {miou*100:.2f}')
 
+    # return miou, per_class_miou
 
 # def write_scores_to_log_file(LOG_PATH, epoch, APPLY_AVERAGING, SOURCE_DATASET_NAME, TARGET_DATASET_NAME):
 

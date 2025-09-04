@@ -114,8 +114,8 @@ def main():
     else:
         ema = None
 
-    # loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
-    loss_fn = CombinedLoss(ce_weight=0.5, dice_weight=0.5, ignore_index=255)
+    loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
+    # loss_fn = CombinedLoss(ce_weight=0.5, dice_weight=0.5, ignore_index=255)
 
     for epoch in range(1 + epoch_modifier, EPOCHS + 1 + epoch_modifier):
          
@@ -157,7 +157,7 @@ def train(train_loader, model, optim, loss_fn, DEVICE, ema, PRINT_INTERVAL, AVER
             continue
 
         h, w = data.shape[2], data.shape[3]
-        logits = torch.nn.functional.interpolate(logits, size=(h, w), mode='bilinear')
+        logits = torch.nn.functional.interpolate(logits, size=(h, w), mode='bilinear', align_corners=False)
     
         loss = loss_fn(logits, targets)
 
