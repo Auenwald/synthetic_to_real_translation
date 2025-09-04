@@ -28,6 +28,8 @@ SEED = 0
 best_val_mean_IoU = 0
 num_classes = 16
 
+scaler = GradScaler()  # global scaler für AMP
+
 torch.manual_seed(SEED)
 torch.cuda.manual_seed_all(SEED)
 np.random.seed(SEED)
@@ -224,6 +226,10 @@ def train(train_loader, model, optim, loss_fn, DEVICE, ema, scheduler, PRINT_INT
                 ) * 100
                 print(f'[train-{SOURCE_DATASET_NAME}] Progress: {i}/{len(train_loader)}, '
                       f'mean-IoU: {mean_iou:.2f}, lr: {optim.param_groups[0]["lr"]}')
+                
+
+        if i > 100:
+            break
 
 # Validate-Funktion mit AMP & Multi-GPU
 def validate(val_loader, model, DEVICE, LOG_PATH, applied_ema, dataset_name, epoch, max_epochs):
@@ -253,8 +259,12 @@ def validate(val_loader, model, DEVICE, LOG_PATH, applied_ema, dataset_name, epo
         if idx % 10 == 0:
             print(f'[val-{dataset_name}{suffix}] - Epoch: {epoch}/{max_epochs} '
                   f'Progress: {idx + 1}/{len(val_loader)}')
+            
+        if idx > 100:
+            break
 
     miou, per_class_miou = utils.compute_mIoU_and_per_class_from_hist(confusion_matrix)
+
 
     # Logging JSON
     LOG_JSON_PATH = LOG_PATH
@@ -279,6 +289,9 @@ def validate(val_loader, model, DEVICE, LOG_PATH, applied_ema, dataset_name, epo
             json.dump(scores, f, indent=4)
 
     print(f'[val-{dataset_name}{suffix}] - Epoch: {epoch}/{max_epochs} - mean-IoU: {miou*100:.2f}')
+
+
+        
 
 
 if __name__ == '__main__':
