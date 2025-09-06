@@ -163,7 +163,7 @@ def main():
     
 
     # model = model_utils.get_model_by_name(MODEL_NAME, num_classes)
-    model = SegformerCrossAttentionWrapper(segformer_name='nvidia/mit-b5', mode="edge")
+    model = SegformerCrossAttentionWrapper(segformer_name='nvidia/mit-b5', mode="fft")
 
     model = model.to(DEVICE)
    

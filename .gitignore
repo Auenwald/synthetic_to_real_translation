@@ -5,3 +5,4 @@ venv
 logs_final/*.txt
 __pycache__
 scripts/*.sh
+checkpoints

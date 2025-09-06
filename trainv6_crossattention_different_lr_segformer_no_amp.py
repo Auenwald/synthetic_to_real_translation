@@ -14,9 +14,11 @@ import model_utils
 from segformer_crossattention_wrapper import *
 import os
 import json
-from losses import CombinedLoss
+from losses import CombinedLoss, CombinedLossV2
+from torch.optim.lr_scheduler import CosineAnnealingLR, LambdaLR
+import os
 import math
-from torch.amp import autocast, GradScaler
+
 
 # import torchmetrics
 from torchmetrics.functional import jaccard_index
@@ -25,6 +27,7 @@ import random
 # os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:8"
 SEED = 0
 
+scores = {}
 best_val_mean_IoU = 0
 num_classes = 16
 
@@ -36,9 +39,13 @@ random.seed(SEED)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
+
+
+
+
 def init_parser(parser):
     parser.add_argument('--source_path', default='./synthia', required=True, help='Path to the source dataset folder')
-    parser.add_argument('--target_paths', type=str, nargs='+', default=['./cityscapes'], help='Paths of the target dataset folders')
+    parser.add_argument('--target_paths', type=str, nargs='+', default=['./cityscapes'], help='Paths of the target dataset folders') 
     parser.add_argument('--model_name', type=str, default="segformer") # deeplab is also possible
     parser.add_argument('--optimizer', '-o', type=str, default='Adam', help ='Optimizer to use | SGD, Adam')
     parser.add_argument('--lr', type=float, default=1.0e-5, help='learning rate')
@@ -52,11 +59,36 @@ def init_parser(parser):
 
     parser.add_argument('--skip_val_source', type=lambda x: x == 'True', default=False)
     parser.add_argument('--decay_factor', type=float, default=0.999, help='Specify the decay factor that is used in EMA')
-    # parser.add_argument('--resume', type=bool, default=False, help='start from an existing checkpoint')
     parser.add_argument('--gpu', type=int, default=0, help="Specify the gpu used for training")
     parser.add_argument('--use_synthia_shapes', type=lambda x: x == 'True', default=False)
     parser.add_argument('--train_print_steps', type=int, default=50, help="Specify the number of iterations between two mIoU prints during training")
 
+    parser.add_argument('--resume', type=lambda x: x == 'True', default=False, help='Resume training from last checkpoint')
+    parser.add_argument('--checkpoint_path', type=str, default='./checkpoints/latest.pth', help='Path to save/load checkpoint')
+
+
+def save_checkpoint(path, model, optimizer, scheduler, epoch):
+    checkpoint = {
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'scheduler_state_dict': scheduler.state_dict(),
+        'epoch': epoch
+    }
+    torch.save(checkpoint, path)
+    print(f"[Checkpoint] Saved to {path}")
+
+def load_checkpoint(path, model, optimizer, scheduler, device='cuda'):
+    if not os.path.exists(path):
+        print(f"[Resume] Checkpoint {path} not found, starting from scratch")
+        return 1  # Start-Epoch
+    
+    checkpoint = torch.load(path, map_location=device)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+    
+    print(f"[Resume] Loaded checkpoint {path} (epoch {checkpoint['epoch']})")
+    return checkpoint['epoch'] + 1
 
 
 def get_optimizer_and_scheduler(model, optimizer_name='adamw', lr=1e-5, total_steps=10000, warmup_steps=500, schedule=None, power=0.9, min_lr=1e-6):
@@ -83,8 +115,10 @@ def get_optimizer_and_scheduler(model, optimizer_name='adamw', lr=1e-5, total_st
 
     # params groups for different LRs
     param_groups = [
-        {"params": model.segformer.encoder.parameters(), "lr": base_lr},
-        {"params": model.decode_head.parameters(), "lr": hybrid_lr }
+        {"params": model.encoder_rgb.parameters(), "lr": base_lr},
+        {"params": model.encoder_feat_hybrid.parameters(), "lr": hybrid_lr },
+        {"params": model.cross_attn_layers.parameters(), "lr": hybrid_lr },
+        {"params": model.decoder.parameters(), "lr": hybrid_lr }
     ]
 
     # create optimizer
@@ -114,6 +148,7 @@ def get_optimizer_and_scheduler(model, optimizer_name='adamw', lr=1e-5, total_st
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     return optimizer, scheduler
 
+
 def main():
     parser = argparse.ArgumentParser()
     init_parser(parser)
@@ -131,10 +166,10 @@ def main():
 
     USE_LOGGING, LOG_PATH = args.use_logging, args.log_file
     PRINT_INTERVAL = args.train_print_steps
-    epoch_modifier = 0
 
     DEVICE = f'cuda:{GPU}' if torch.cuda.is_available() else 'cpu'
     print(f'Found the following device: {DEVICE}')
+
 
 
     # define the dataloader
@@ -153,7 +188,9 @@ def main():
     # model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b1-finetuned-ade-512-512", ignore_mismatched_sizes=True, num_labels=num_classes)
     
 
-    model = model_utils.get_model_by_name(MODEL_NAME, num_classes)
+    # model = model_utils.get_model_by_name(MODEL_NAME, num_classes)
+    model = SegformerCrossAttentionWrapper(segformer_name='nvidia/mit-b5', mode="lab")
+
     model = model.to(DEVICE)
    
     optim, scheduler = get_optimizer_and_scheduler(model, optimizer_name=args.optimizer.lower(), lr=LR, total_steps=len(source_train_data_loader)*EPOCHS)
@@ -165,12 +202,29 @@ def main():
         ema = None
 
     loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
-    # loss_fn = CombinedLoss(ce_weight=0.5, dice_weight=0.5, ignore_index=255)
+    # loss_fn = CombinedLossV2(dice_weight=0.5, focal_weight=0.5, ignore_index=255)
 
-    for epoch in range(1 + epoch_modifier, EPOCHS + 1 + epoch_modifier):
+
+    # resume if necessary
+    log_filename = os.path.splitext(os.path.basename(LOG_PATH))[0]  # log.jso
+    CHECKPOINT_DIR = './checkpoints'
+    os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+    CHECKPOINT_PATH = os.path.join(CHECKPOINT_DIR, log_filename + '.pth')
+
+    start_epoch = 1
+
+    if args.resume:
+        start_epoch = load_checkpoint(CHECKPOINT_PATH, model, optim, scheduler, DEVICE)
+
+
+    for epoch in range(start_epoch, EPOCHS + 1 ):
          
         train(source_train_data_loader, model, optim, loss_fn, DEVICE, ema, scheduler, PRINT_INTERVAL, AVERAGING_INTERVAL, SOURCE_DATASET_NAME)
 
+        if epoch % 3 == 0:
+            save_checkpoint(CHECKPOINT_PATH, model, optim, scheduler, epoch)
+
+          
          # Validation
         if WEIGHT_AVERAGING and ema:
             with ema.average_parameters():
@@ -287,10 +341,6 @@ def validate(val_loader, model, DEVICE, LOG_PATH, applied_ema, dataset_name, epo
             json.dump(scores, f, indent=4)
 
     print(f'[val-{dataset_name}{suffix}] - Epoch: {epoch}/{max_epochs} - mean-IoU: {miou*100:.2f}')
-
-
-        
-
 
 if __name__ == '__main__':
     main()
