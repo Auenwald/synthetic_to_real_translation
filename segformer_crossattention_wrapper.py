@@ -5,8 +5,6 @@ import torch
 import torch.nn.functional as F
 import kornia
 from torch_dct import dct_2d
-from torch.utils.checkpoint import checkpoint
-from torch.cuda.amp import autocast
 
 
 
@@ -77,7 +75,7 @@ class SegformerCrossAttentionWrapper(nn.Module):
 
         if mode == "edge" or mode == "fft" or mode == "dct":
             self.hybrid_out_ch = 1
-        elif mode == "lab" or mode == "fft_dct_edge":
+        elif mode == "lab" or mode == "fft_dct_edge" or mode == "hsv":
             self.hybrid_out_ch = 3
         elif mode == "fft_dct":
             self.hybrid_out_ch = 2
@@ -191,19 +189,23 @@ class SegformerCrossAttentionWrapper(nn.Module):
 
     def forward(self, image_rgb, labels=None):
         image_rgb = image_rgb.float()
-        if self.mode == "fft":
-            feat_hybrid = self.fft_magnitude_1ch(image_rgb)
-        elif self.mode == "dct":
-            feat_hybrid = self.dct_map_1ch(image_rgb)
-        elif self.mode == "lab":
-            feat_hybrid = kornia.color.rgb_to_lab(image_rgb)
-        elif self.mode == "fft_dct":
-            feat_hybrid = self.fft_dct_stack(image_rgb)
-        elif self.mode == "fft_dct_edge":
-            feat_hybrid = self.fft_dct_edge_stack(image_rgb)
-        else:
-            feat_hybrid = utils.multiscale_scharr_edges(image_rgb)
-    
+        with torch.no_grad():
+            if self.mode == "fft":
+                feat_hybrid = self.fft_magnitude_1ch(image_rgb)
+            elif self.mode == "dct":
+                feat_hybrid = self.dct_map_1ch(image_rgb)
+            elif self.mode == "lab":
+                feat_hybrid = kornia.color.rgb_to_lab(image_rgb)
+            elif self.mode == "hsv":
+                feat_hybrid = kornia.color.rgb_to_hsv(image_rgb)
+            elif self.mode == "fft_dct":
+                feat_hybrid = self.fft_dct_stack(image_rgb)
+            elif self.mode == "fft_dct_edge":
+                feat_hybrid = self.fft_dct_edge_stack(image_rgb)
+            else:
+                feat_hybrid = utils.multiscale_scharr_edges(image_rgb)
+
+        feat_hybrid = feat_hybrid.detach()
 
         # rgb hidden states
         rgb_outputs = self.encoder_rgb(image_rgb, output_hidden_states=True)
@@ -216,16 +218,58 @@ class SegformerCrossAttentionWrapper(nn.Module):
         
         cross_features = []
 
-        # wrap into a list - necessary for feature dropout
+        # # wrap into a list - necessary for feature dropout
+        # rgb_hidden_states = list(rgb_hidden_states)
+        # feat_hybrid_hidden_states = list(feat_hybrid_hidden_states)[1:]
+
+
+        # for i in range(4):
+        #     B, C, H, W = rgb_hidden_states[i].shape
+
+
+
+        #     if i == 0:
+        #         cross_features.append(rgb_hidden_states[i])
+        #     else:
+
+        #         # feature dropout
+        #         # rgb_hidden_states[i], feat_hybrid_hidden_states[i] = self.feature_dropout(rgb_hidden_states[i], feat_hybrid_hidden_states[i])
+
+        #         # # downsampling
+        #         rgb_small = F.interpolate(rgb_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
+        #         feat_hybrid_small = F.interpolate(feat_hybrid_hidden_states[i-1], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
+
+        #         # flattening for attention
+        #         rgb_flat = rgb_small.flatten(2).transpose(1, 2)  # B, N, C
+        #         feat_hybrid_flat = feat_hybrid_small.flatten(2).transpose(1, 2) 
+
+        #         # --- Aux Dropout (Feature-Dropout auf Aux-Branch) ---
+        #         # if self.training:
+        #         #     aux_mask = (torch.rand(B, 1, 1, device=feat_hybrid_flat.device) > 0.2).float()
+        #         #     feat_hybrid_flat = feat_hybrid_flat * aux_mask  # shape: (B, N, C)
+
+        #         # applying cross.attention
+        #         attn_out = self.cross_attn_layers[i](rgb_flat, feat_hybrid_flat)
+
+        #         fused = rgb_flat + attn_out  
+
+        #         # upscaling via interpolation 
+        #         fused = fused.transpose(1, 2).view(B, C, int(H*self.downsample_factor), int(W*self.downsample_factor))
+        #         fused = F.interpolate(fused, size=(H, W), mode='bilinear', align_corners=False)
+        #         cross_features.append(fused)
+
+
+        # # decoder
+        # logits = self.decoder(cross_features)
+
+
+         # wrap into a list - necessary for feature dropout
         rgb_hidden_states = list(rgb_hidden_states)
         feat_hybrid_hidden_states = list(feat_hybrid_hidden_states)
 
 
         for i in range(4):
             B, C, H, W = rgb_hidden_states[i].shape
-
-            # feature dropout
-            # rgb_hidden_states[i], feat_hybrid_hidden_states[i] = self.feature_dropout(rgb_hidden_states[i], feat_hybrid_hidden_states[i])
 
             # # downsampling
             rgb_small = F.interpolate(rgb_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
@@ -235,12 +279,7 @@ class SegformerCrossAttentionWrapper(nn.Module):
             rgb_flat = rgb_small.flatten(2).transpose(1, 2)  # B, N, C
             feat_hybrid_flat = feat_hybrid_small.flatten(2).transpose(1, 2) 
 
-             # ---- StyleMix nur auf frühen Stages (i = 0 oder 1) ----
-            # if self.training and i < 2 and torch.rand(1) < 0.5:
-            #     rgb_small = self.style_mix(rgb_small)
-
-
-             # --- Aux Dropout (Feature-Dropout auf Aux-Branch) ---
+            # --- Aux Dropout (Feature-Dropout auf Aux-Branch) ---
             # if self.training:
             #     aux_mask = (torch.rand(B, 1, 1, device=feat_hybrid_flat.device) > 0.2).float()
             #     feat_hybrid_flat = feat_hybrid_flat * aux_mask  # shape: (B, N, C)

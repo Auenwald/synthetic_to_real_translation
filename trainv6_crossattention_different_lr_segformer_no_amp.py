@@ -189,7 +189,7 @@ def main():
     
 
     # model = model_utils.get_model_by_name(MODEL_NAME, num_classes)
-    model = SegformerCrossAttentionWrapper(segformer_name='nvidia/mit-b5', mode="lab")
+    model = SegformerCrossAttentionWrapper(segformer_name='nvidia/mit-b5', mode="fft")
 
     model = model.to(DEVICE)
    
@@ -211,10 +211,13 @@ def main():
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
     CHECKPOINT_PATH = os.path.join(CHECKPOINT_DIR, log_filename + '.pth')
 
+    # CHECKPOINT_PATH = f'{os.getcwd()}/checkpoints/synthia_to_cs_and_bdd_lr1e5_and_lr1e4_crossattention_rgb_and_fft_no_amp.pth'
+
     start_epoch = 1
 
     if args.resume:
         start_epoch = load_checkpoint(CHECKPOINT_PATH, model, optim, scheduler, DEVICE)
+        print(f"Resume training ... start epoch: {start_epoch}")
 
 
     for epoch in range(start_epoch, EPOCHS + 1 ):
