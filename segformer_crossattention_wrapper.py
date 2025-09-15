@@ -20,7 +20,7 @@ class MultiHeadCrossAttention(nn.Module):
         self.value = nn.Linear(in_dim, attn_dim)
         self.out_proj = nn.Linear(attn_dim, in_dim)
 
-    def forward(self, x_q, x_kv):
+    def forward(self, x_q, x_kv, return_attn=False):
         B, N_q, _ = x_q.shape
         B, N_kv, _ = x_kv.shape
 
@@ -32,7 +32,11 @@ class MultiHeadCrossAttention(nn.Module):
         attn = F.softmax(scores, dim=-1)
         context = attn @ V
         context = context.transpose(1, 2).contiguous().view(B, N_q, self.num_heads * self.head_dim)
-        return self.out_proj(context)
+        
+        if return_attn:
+            return self.out_proj(context), attn
+        else:
+            return self.out_proj(context)
 
 
 class FeatureDropout(nn.Module):
@@ -70,12 +74,13 @@ class SegformerCrossAttentionWrapper(nn.Module):
                  cross_attn_dims=[64, 128, 256, 384], 
                  downsample_factor=0.5,
                    num_classes=16,
+                   num_heads=4,
                    mode="edge"):
         super().__init__()
 
         if mode == "edge" or mode == "fft" or mode == "dct":
             self.hybrid_out_ch = 1
-        elif mode == "lab" or mode == "fft_dct_edge" or mode == "hsv":
+        elif mode == "lab" or mode == "fft_dct_edge" or mode == "hsv" or mode == 'multiscale_fft':
             self.hybrid_out_ch = 3
         elif mode == "fft_dct":
             self.hybrid_out_ch = 2
@@ -84,6 +89,7 @@ class SegformerCrossAttentionWrapper(nn.Module):
             print("Mode unknown:", mode)
 
         self.mode = mode
+        self.num_heads = num_heads
 
         # rgb branch
         base_model_rgb = SegformerForSemanticSegmentation.from_pretrained(segformer_name, num_labels=num_classes)
@@ -106,7 +112,7 @@ class SegformerCrossAttentionWrapper(nn.Module):
         # self.feature_dropout = FeatureDropout(drop_prob=0.3, mode="branch")
 
         self.cross_attn_layers = nn.ModuleList([
-            MultiHeadCrossAttention(in_dim=c, attn_dim=d) 
+            MultiHeadCrossAttention(in_dim=c, attn_dim=d, num_heads=self.num_heads) 
             for c, d in zip(config.hidden_sizes, cross_attn_dims)
         ])
 
@@ -150,6 +156,56 @@ class SegformerCrossAttentionWrapper(nn.Module):
         log_mag = (log_mag - log_mag.mean(dim=[2,3], keepdim=True)) / (log_mag.std(dim=[2,3], keepdim=True) + 1e-6)
     
         return log_mag  # [B, 1, H, W]
+    
+
+    def normalized_multiscale_fft(self, image_rgb, scales=[1.0, 0.5, 0.25]):
+        """
+        Normalized multi-scale FFT with better numerical stability
+        Returns: [B, len(scales), H, W] normalized magnitudes
+        """
+        batch_size, channels, H, W = image_rgb.shape
+        multi_scale_magnitudes = []
+        
+        for scale in scales:
+            # Skalierung
+            if scale != 1.0:
+                new_H, new_W = int(H * scale), int(W * scale)
+                scaled_img = F.interpolate(image_rgb, size=(new_H, new_W), 
+                                        mode='bilinear', align_corners=False)
+            else:
+                scaled_img = image_rgb
+            
+            # FFT Berechnung mit stabiler Log-Transform
+            fft = torch.fft.fft2(scaled_img)
+            fft_shift = torch.fft.fftshift(fft, dim=(-2, -1))
+            magnitude = torch.abs(fft_shift)
+            magnitude_1ch = magnitude.mean(dim=1, keepdim=True)
+            
+            # Stabiler Logarithmus mit epsilon
+            log_mag = torch.log(magnitude_1ch + 1e-10)  # Besser als log1p für FFT
+            
+            # Zurück auf Originalgröße
+            if scale != 1.0:
+                log_mag = F.interpolate(log_mag, size=(H, W), 
+                                    mode='bilinear', align_corners=False)
+            
+            multi_scale_magnitudes.append(log_mag)
+        
+        # Concatenate all scales
+        multiscale_result = torch.cat(multi_scale_magnitudes, dim=1)  # [B, S, H, W]
+        
+        # Instance Normalization pro Skala
+        b, s, h, w = multiscale_result.shape
+        normalized_result = torch.zeros_like(multiscale_result)
+        
+        for i in range(s):
+            channel = multiscale_result[:, i:i+1, :, :]
+            # Robust normalization with epsilon
+            mean = channel.mean(dim=[2, 3], keepdim=True)
+            std = channel.std(dim=[2, 3], keepdim=True) + 1e-8
+            normalized_result[:, i:i+1, :, :] = (channel - mean) / std
+    
+        return normalized_result
 
     def dct_map_1ch(self, image_rgb):
         """
@@ -187,11 +243,13 @@ class SegformerCrossAttentionWrapper(nn.Module):
     
 
 
-    def forward(self, image_rgb, labels=None):
+    def forward(self, image_rgb, labels=None, return_attention=False):
         image_rgb = image_rgb.float()
         with torch.no_grad():
             if self.mode == "fft":
                 feat_hybrid = self.fft_magnitude_1ch(image_rgb)
+            elif self.mode == "multiscale_fft":
+                feat_hybrid = self.normalized_multiscale_fft(image_rgb)
             elif self.mode == "dct":
                 feat_hybrid = self.dct_map_1ch(image_rgb)
             elif self.mode == "lab":
@@ -218,15 +276,13 @@ class SegformerCrossAttentionWrapper(nn.Module):
         
         cross_features = []
 
-        # # wrap into a list - necessary for feature dropout
+        # # # wrap into a list - necessary for feature dropout
         # rgb_hidden_states = list(rgb_hidden_states)
         # feat_hybrid_hidden_states = list(feat_hybrid_hidden_states)[1:]
 
 
         # for i in range(4):
         #     B, C, H, W = rgb_hidden_states[i].shape
-
-
 
         #     if i == 0:
         #         cross_features.append(rgb_hidden_states[i])
@@ -262,10 +318,14 @@ class SegformerCrossAttentionWrapper(nn.Module):
         # # decoder
         # logits = self.decoder(cross_features)
 
+        # return logits
 
-         # wrap into a list - necessary for feature dropout
+
+        # wrap into a list - necessary for feature dropout
         rgb_hidden_states = list(rgb_hidden_states)
         feat_hybrid_hidden_states = list(feat_hybrid_hidden_states)
+
+        attentions_per_layer = []  # <--- speichern
 
 
         for i in range(4):
@@ -285,7 +345,11 @@ class SegformerCrossAttentionWrapper(nn.Module):
             #     feat_hybrid_flat = feat_hybrid_flat * aux_mask  # shape: (B, N, C)
 
             # applying cross.attention
-            attn_out = self.cross_attn_layers[i](rgb_flat, feat_hybrid_flat)
+            if return_attention:
+                attn_out, attn = self.cross_attn_layers[i](rgb_flat, feat_hybrid_flat, return_attn=True)
+                attentions_per_layer.append(attn)
+            else:
+                attn_out = self.cross_attn_layers[i](rgb_flat, feat_hybrid_flat)
 
             fused = rgb_flat + attn_out  
 
@@ -298,7 +362,10 @@ class SegformerCrossAttentionWrapper(nn.Module):
         # decoder
         logits = self.decoder(cross_features)
 
-        return logits
+        if return_attention:
+            return logits, attentions_per_layer
+        else:
+            return logits
 
 
 

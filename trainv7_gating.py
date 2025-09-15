@@ -119,7 +119,9 @@ def get_optimizer_and_scheduler(model, optimizer_name='adamw', lr=1e-5, total_st
         {"params": model.encoder_rgb.parameters(), "lr": base_lr},
         {"params": model.encoder_feat_hybrid.parameters(), "lr": hybrid_lr },
         {"params": model.cross_attn_layers.parameters(), "lr": hybrid_lr },
-        {"params": model.decoder.parameters(), "lr": hybrid_lr }
+        {"params": model.decoder.parameters(), "lr": hybrid_lr },
+        {"params": model.gating_weights, "lr": hybrid_lr},
+        {"params": model.fusion_convs.parameters(), "lr": hybrid_lr}
     ]
 
     # create optimizer
@@ -190,7 +192,7 @@ def main():
     
 
     # model = model_utils.get_model_by_name(MODEL_NAME, num_classes)
-    model = SegformerCrossAttentionWrapper(segformer_name='nvidia/mit-b5', mode="dct", num_heads=4)
+    model = SegformerCrossAttentionWrapperV2(segformer_name='nvidia/mit-b5', mode="dct", num_heads=4)
 
     model = model.to(DEVICE)
    
@@ -269,7 +271,6 @@ def train(train_loader, model, optim, loss_fn, DEVICE, ema, scheduler, PRINT_INT
                 # Update the moving average with the new parameters from the last optimizer step
                 ema.update()
 
-
         # Print
         if i > 0 and i % PRINT_INTERVAL == 0:
             with torch.no_grad():
@@ -282,68 +283,7 @@ def train(train_loader, model, optim, loss_fn, DEVICE, ema, scheduler, PRINT_INT
                       f'mean-IoU: {mean_iou:.2f}, lr: {optim.param_groups[0]["lr"]}')
 
 
-# def validate(val_loader, model, DEVICE, LOG_PATH, applied_ema, dataset_name, epoch, max_epochs):
-#     model.eval()
-#     suffix = "-ema" if applied_ema else ""
-#     dataset_key = dataset_name + suffix
 
-#     # init confusion matrix
-#     confusion_matrix = torch.zeros(num_classes, num_classes, dtype=torch.int64, device=DEVICE)
-
-#     for idx, (data, targets) in enumerate(val_loader):
-
-#         if data is None or targets is None:
-#             continue
-
-#         data, targets = data.to(DEVICE), targets.to(DEVICE).long()
-
-#         with torch.no_grad():
-#             output = model_utils.get_logits(model, data)
-#             output = torch.nn.functional.interpolate(
-#                 output,
-#                 size=utils.get_image_size(dataset_name),
-#                 mode='bilinear',
-#                 align_corners=False
-#             )
-
-#         preds = torch.argmax(output, dim=1)
-
-#         # update confusion matrix
-#         confusion_matrix += utils.torch_fast_hist(preds, targets, num_classes, device=DEVICE)
-
-#         if idx % 10 == 0:
-#             print(f'[val-{dataset_name}{suffix}] - Epoch: {epoch}/{max_epochs} '
-#                   f'Progress: {idx + 1}/{len(val_loader)}')
-
-#     # mIoU aus Confusion Matrix berechnen
-#     miou, per_class_miou = utils.compute_mIoU_and_per_class_from_hist(confusion_matrix)
-
-
-#     LOG_JSON_PATH = LOG_PATH
-#     scores = {}
-
-#     if LOG_JSON_PATH and os.path.exists(LOG_JSON_PATH) and os.path.getsize(LOG_JSON_PATH) > 0:
-#         try:
-#             with open(LOG_JSON_PATH, 'r') as f:
-#                     scores = json.load(f)
-#         except json.JSONDecodeError:
-#             print(f"Warnung: {LOG_JSON_PATH} ist leer oder ungültig. Starte mit leerem Dict.")
-
-#     if dataset_key not in scores:
-#         scores[dataset_key] = {}
-
-#     # Epoch-Daten immer setzen
-#     scores[dataset_key][str(epoch)] = {
-#         "mean_iou": round(miou * 100, 3),
-#         "per_class_iou": {str(k): round(v*100, 3) for k, v in per_class_miou.items()}
-#     }
-
-#      # JSON zurückschreiben
-#     if LOG_JSON_PATH:
-#         with open(LOG_JSON_PATH, 'w') as f:
-#             json.dump(scores, f, indent=4)
-
-#     print(f'[val-{dataset_name}{suffix}] - Epoch: {epoch}/{max_epochs} - mean-IoU: {miou*100:.2f}')
 
 def validate(val_loader, model, DEVICE, LOG_PATH, applied_ema, dataset_name, epoch, max_epochs):
     model.eval()
