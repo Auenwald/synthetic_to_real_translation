@@ -84,7 +84,7 @@ class SegformerCrossAttentionWrapperV2(nn.Module):
             for c, d in zip(config.hidden_sizes, cross_attn_dims)
         ])
 
-        # --- 1x1 Conv nach Concat Fusion ---
+        # --- 1x1 conv after concat fusion ---
         self.fusion_convs = nn.ModuleList([
             nn.Conv2d(c*2, c, kernel_size=1) for c in config.hidden_sizes
         ])

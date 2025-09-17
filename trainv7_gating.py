@@ -192,7 +192,7 @@ def main():
     
 
     # model = model_utils.get_model_by_name(MODEL_NAME, num_classes)
-    model = SegformerCrossAttentionWrapperV2(segformer_name='nvidia/mit-b5', mode="dct", num_heads=4)
+    model = SegformerCrossAttentionWrapperV2(segformer_name='nvidia/mit-b5', mode="hsv", num_heads=4)
 
     model = model.to(DEVICE)
    

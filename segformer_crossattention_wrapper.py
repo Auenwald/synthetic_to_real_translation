@@ -5,8 +5,43 @@ import torch
 import torch.nn.functional as F
 import kornia
 from torch_dct import dct_2d
+from pytorch_wavelets import DWTForward  
 
+class WaveletExtractor(nn.Module):
+    """
+    Extrahiert Highpass-Wavelet-Bänder als zusätzliche Modalität
+    """
+    def __init__(self, wave='haar', level=1, in_ch=3, normalize=True):
+        super().__init__()
+        self.dwt = DWTForward(J=level, wave=wave)
+        self.level = level
+        self.in_ch = in_ch
+        self.normalize = normalize
 
+    def forward(self, x):
+        # x: [B, C, H, W] = [2, 3, 760, 1280]
+        yl, yh = self.dwt(x)   # yl: [2, 3, 380, 640], yh: Liste mit [2, 3, level, H', W']
+        
+        highs = []
+        for level_data in yh:  # level_data: [B, C, level, H', W']
+            B, C, L, H_half, W_half = level_data.shape
+            level_flat = level_data.reshape(B, C * L, H_half, W_half)
+            highs.append(level_flat)
+        
+        # Alle Level zusammenführen
+        high = torch.cat(highs, dim=1)  # [B, C*L*len(yh), H', W']
+        
+        # Hochskalieren auf Originalgröße
+        high_up = F.interpolate(high, size=(x.shape[2], x.shape[3]),
+                                mode='bilinear', align_corners=False)
+        
+        # Normalisierung
+        if self.normalize:
+            mean = high_up.mean(dim=[2, 3], keepdim=True)
+            std  = high_up.std(dim=[2, 3], keepdim=True) + 1e-6
+            high_up = (high_up - mean) / std
+        
+        return high_up
 
 class MultiHeadCrossAttention(nn.Module):
     def __init__(self, in_dim, attn_dim=128, num_heads=4):
@@ -79,13 +114,19 @@ class SegformerCrossAttentionWrapper(nn.Module):
         super().__init__()
 
         if mode == "edge" or mode == "fft" or mode == "dct":
-            self.hybrid_out_ch = 1
+            self.hybrid_ch_in = 1
         elif mode == "lab" or mode == "fft_dct_edge" or mode == "hsv" or mode == 'multiscale_fft':
-            self.hybrid_out_ch = 3
+            self.hybrid_ch_in = 3
         elif mode == "fft_dct":
-            self.hybrid_out_ch = 2
+            self.hybrid_ch_in = 2
+        elif mode == "wavelet":
+            self.wavelet_level = 1
+            self.hybrid_ch_in = 9
+            self.wavelet_extractor = WaveletExtractor(
+                wave='haar', level=self.wavelet_level, in_ch=3
+            )
         else:
-            self.hybrid_out_ch = 1
+            self.hybrid_ch_in = 1
             print("Mode unknown:", mode)
 
         self.mode = mode
@@ -101,7 +142,7 @@ class SegformerCrossAttentionWrapper(nn.Module):
 
         # adjust input embedding dim to number of modalities + channels
         self.encoder_feat_hybrid.patch_embeddings[0].proj = nn.Conv2d(
-            in_channels=self.hybrid_out_ch,
+            in_channels=self.hybrid_ch_in,
             out_channels=self.encoder_feat_hybrid.config.hidden_sizes[0],
             kernel_size=7,
             stride=4,
@@ -260,6 +301,8 @@ class SegformerCrossAttentionWrapper(nn.Module):
                 feat_hybrid = self.fft_dct_stack(image_rgb)
             elif self.mode == "fft_dct_edge":
                 feat_hybrid = self.fft_dct_edge_stack(image_rgb)
+            elif self.mode == "wavelet":
+                feat_hybrid = self.wavelet_extractor(image_rgb)
             else:
                 feat_hybrid = utils.multiscale_scharr_edges(image_rgb)
 
@@ -276,96 +319,96 @@ class SegformerCrossAttentionWrapper(nn.Module):
         
         cross_features = []
 
-        # # # wrap into a list - necessary for feature dropout
-        # rgb_hidden_states = list(rgb_hidden_states)
-        # feat_hybrid_hidden_states = list(feat_hybrid_hidden_states)[1:]
-
-
-        # for i in range(4):
-        #     B, C, H, W = rgb_hidden_states[i].shape
-
-        #     if i == 0:
-        #         cross_features.append(rgb_hidden_states[i])
-        #     else:
-
-        #         # feature dropout
-        #         # rgb_hidden_states[i], feat_hybrid_hidden_states[i] = self.feature_dropout(rgb_hidden_states[i], feat_hybrid_hidden_states[i])
-
-        #         # # downsampling
-        #         rgb_small = F.interpolate(rgb_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
-        #         feat_hybrid_small = F.interpolate(feat_hybrid_hidden_states[i-1], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
-
-        #         # flattening for attention
-        #         rgb_flat = rgb_small.flatten(2).transpose(1, 2)  # B, N, C
-        #         feat_hybrid_flat = feat_hybrid_small.flatten(2).transpose(1, 2) 
-
-        #         # --- Aux Dropout (Feature-Dropout auf Aux-Branch) ---
-        #         # if self.training:
-        #         #     aux_mask = (torch.rand(B, 1, 1, device=feat_hybrid_flat.device) > 0.2).float()
-        #         #     feat_hybrid_flat = feat_hybrid_flat * aux_mask  # shape: (B, N, C)
-
-        #         # applying cross.attention
-        #         attn_out = self.cross_attn_layers[i](rgb_flat, feat_hybrid_flat)
-
-        #         fused = rgb_flat + attn_out  
-
-        #         # upscaling via interpolation 
-        #         fused = fused.transpose(1, 2).view(B, C, int(H*self.downsample_factor), int(W*self.downsample_factor))
-        #         fused = F.interpolate(fused, size=(H, W), mode='bilinear', align_corners=False)
-        #         cross_features.append(fused)
-
-
-        # # decoder
-        # logits = self.decoder(cross_features)
-
-        # return logits
-
-
-        # wrap into a list - necessary for feature dropout
+        # # wrap into a list - necessary for feature dropout
         rgb_hidden_states = list(rgb_hidden_states)
-        feat_hybrid_hidden_states = list(feat_hybrid_hidden_states)
-
-        attentions_per_layer = []  # <--- speichern
+        feat_hybrid_hidden_states = list(feat_hybrid_hidden_states)[1:]
 
 
         for i in range(4):
             B, C, H, W = rgb_hidden_states[i].shape
 
-            # # downsampling
-            rgb_small = F.interpolate(rgb_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
-            feat_hybrid_small = F.interpolate(feat_hybrid_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
-
-            # flattening for attention
-            rgb_flat = rgb_small.flatten(2).transpose(1, 2)  # B, N, C
-            feat_hybrid_flat = feat_hybrid_small.flatten(2).transpose(1, 2) 
-
-            # --- Aux Dropout (Feature-Dropout auf Aux-Branch) ---
-            # if self.training:
-            #     aux_mask = (torch.rand(B, 1, 1, device=feat_hybrid_flat.device) > 0.2).float()
-            #     feat_hybrid_flat = feat_hybrid_flat * aux_mask  # shape: (B, N, C)
-
-            # applying cross.attention
-            if return_attention:
-                attn_out, attn = self.cross_attn_layers[i](rgb_flat, feat_hybrid_flat, return_attn=True)
-                attentions_per_layer.append(attn)
+            if i == 0:
+                cross_features.append(rgb_hidden_states[i])
             else:
+
+                # feature dropout
+                # rgb_hidden_states[i], feat_hybrid_hidden_states[i] = self.feature_dropout(rgb_hidden_states[i], feat_hybrid_hidden_states[i])
+
+                # # downsampling
+                rgb_small = F.interpolate(rgb_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
+                feat_hybrid_small = F.interpolate(feat_hybrid_hidden_states[i-1], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
+
+                # flattening for attention
+                rgb_flat = rgb_small.flatten(2).transpose(1, 2)  # B, N, C
+                feat_hybrid_flat = feat_hybrid_small.flatten(2).transpose(1, 2) 
+
+                # --- Aux Dropout (Feature-Dropout auf Aux-Branch) ---
+                # if self.training:
+                #     aux_mask = (torch.rand(B, 1, 1, device=feat_hybrid_flat.device) > 0.2).float()
+                #     feat_hybrid_flat = feat_hybrid_flat * aux_mask  # shape: (B, N, C)
+
+                # applying cross.attention
                 attn_out = self.cross_attn_layers[i](rgb_flat, feat_hybrid_flat)
 
-            fused = rgb_flat + attn_out  
+                fused = rgb_flat + attn_out  
 
-            # upscaling via interpolation 
-            fused = fused.transpose(1, 2).view(B, C, int(H*self.downsample_factor), int(W*self.downsample_factor))
-            fused = F.interpolate(fused, size=(H, W), mode='bilinear', align_corners=False)
-            cross_features.append(fused)
+                # upscaling via interpolation 
+                fused = fused.transpose(1, 2).view(B, C, int(H*self.downsample_factor), int(W*self.downsample_factor))
+                fused = F.interpolate(fused, size=(H, W), mode='bilinear', align_corners=False)
+                cross_features.append(fused)
 
 
         # decoder
         logits = self.decoder(cross_features)
 
-        if return_attention:
-            return logits, attentions_per_layer
-        else:
-            return logits
+        return logits
+
+
+        # wrap into a list - necessary for feature dropout
+        # rgb_hidden_states = list(rgb_hidden_states)
+        # feat_hybrid_hidden_states = list(feat_hybrid_hidden_states)
+
+        # attentions_per_layer = []  # <--- speichern
+
+
+        # for i in range(4):
+        #     B, C, H, W = rgb_hidden_states[i].shape
+
+        #     # # downsampling
+        #     rgb_small = F.interpolate(rgb_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
+        #     feat_hybrid_small = F.interpolate(feat_hybrid_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
+
+        #     # flattening for attention
+        #     rgb_flat = rgb_small.flatten(2).transpose(1, 2)  # B, N, C
+        #     feat_hybrid_flat = feat_hybrid_small.flatten(2).transpose(1, 2) 
+
+        #     # --- Aux Dropout (Feature-Dropout auf Aux-Branch) ---
+        #     # if self.training:
+        #     #     aux_mask = (torch.rand(B, 1, 1, device=feat_hybrid_flat.device) > 0.2).float()
+        #     #     feat_hybrid_flat = feat_hybrid_flat * aux_mask  # shape: (B, N, C)
+
+        #     # applying cross.attention
+        #     if return_attention:
+        #         attn_out, attn = self.cross_attn_layers[i](rgb_flat, feat_hybrid_flat, return_attn=True)
+        #         attentions_per_layer.append(attn)
+        #     else:
+        #         attn_out = self.cross_attn_layers[i](rgb_flat, feat_hybrid_flat)
+
+        #     fused = rgb_flat + attn_out  
+
+        #     # upscaling via interpolation 
+        #     fused = fused.transpose(1, 2).view(B, C, int(H*self.downsample_factor), int(W*self.downsample_factor))
+        #     fused = F.interpolate(fused, size=(H, W), mode='bilinear', align_corners=False)
+        #     cross_features.append(fused)
+
+
+        # # decoder
+        # logits = self.decoder(cross_features)
+
+        # if return_attention:
+        #     return logits, attentions_per_layer
+        # else:
+        #     return logits
 
 
 
