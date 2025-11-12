@@ -16,3 +16,5 @@ segformer-pytorch==0.0.6
 torch-ema==0.3
 kornia==0.8.1
 pytorch-wavelets==1.3.0
+torch-dct==0.1.6
+PyWavelets==1.8.0

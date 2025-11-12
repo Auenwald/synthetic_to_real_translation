@@ -80,7 +80,7 @@ python train_crossattention_segformer.py \
   --optimizer adamw \
   --epochs 70 \
   --use_logging True \
-  --log_file ./logs/synthia_to_cs_and_bdd_lr1e5_and_lr1e4_crossattention_rgb_and_edges_conv_v2.json
+  --log_file ./logs/synthia_to_cs_and_bdd_lr1e5_and_lr1e4_crossattention_rgb_and_edges_conv_v2.json \
   --skip_val_source False \
   --decay_factor 0.995 \
   --weight_averaging False \

@@ -5,6 +5,43 @@ import torch
 import torch.nn.functional as F
 import kornia
 from torch_dct import dct_2d
+from pytorch_wavelets import DWTForward 
+
+class WaveletExtractor(nn.Module):
+    """
+    Extrahiert Highpass-Wavelet-Bänder als zusätzliche Modalität
+    """
+    def __init__(self, wave='haar', level=1, in_ch=3, normalize=True):
+        super().__init__()
+        self.dwt = DWTForward(J=level, wave=wave)
+        self.level = level
+        self.in_ch = in_ch
+        self.normalize = normalize
+
+    def forward(self, x):
+        # x: [B, C, H, W] = [2, 3, 760, 1280]
+        yl, yh = self.dwt(x)   # yl: [2, 3, 380, 640], yh: Liste mit [2, 3, level, H', W']
+        
+        highs = []
+        for level_data in yh:  # level_data: [B, C, level, H', W']
+            B, C, L, H_half, W_half = level_data.shape
+            level_flat = level_data.reshape(B, C * L, H_half, W_half)
+            highs.append(level_flat)
+        
+        # Alle Level zusammenführen
+        high = torch.cat(highs, dim=1)  # [B, C*L*len(yh), H', W']
+        
+        # Hochskalieren auf Originalgröße
+        high_up = F.interpolate(high, size=(x.shape[2], x.shape[3]),
+                                mode='bilinear', align_corners=False)
+        
+        # Normalisierung
+        if self.normalize:
+            mean = high_up.mean(dim=[2, 3], keepdim=True)
+            std  = high_up.std(dim=[2, 3], keepdim=True) + 1e-6
+            high_up = (high_up - mean) / std
+        
+        return high_up
 
 
 class MultiHeadCrossAttention(nn.Module):
@@ -47,14 +84,20 @@ class SegformerCrossAttentionWrapperV2(nn.Module):
         super().__init__()
 
         # --- Hybrid Feature Kanalanzahl bestimmen ---
-        if mode in ["edge", "fft", "dct"]:
-            self.hybrid_out_ch = 1
-        elif mode in ["lab", "fft_dct_edge", "hsv", "multiscale_fft"]:
-            self.hybrid_out_ch = 3
+        if mode == "edge" or mode == "fft" or mode == "dct":
+            self.hybrid_ch_in = 1
+        elif mode == "lab" or mode == "fft_dct_edge" or mode == "hsv" or mode == 'multiscale_fft':
+            self.hybrid_ch_in = 3
         elif mode == "fft_dct":
-            self.hybrid_out_ch = 2
+            self.hybrid_ch_in = 2
+        elif mode == "wavelet":
+            self.wavelet_level = 1
+            self.hybrid_ch_in = 9
+            self.wavelet_extractor = WaveletExtractor(
+                wave='haar', level=self.wavelet_level, in_ch=3
+            )
         else:
-            self.hybrid_out_ch = 1
+            self.hybrid_ch_in = 1
             print("Mode unknown:", mode)
 
         self.mode = mode
@@ -71,7 +114,7 @@ class SegformerCrossAttentionWrapperV2(nn.Module):
         # --- Hybrid Branch ---
         self.encoder_feat_hybrid = SegformerModel(config).encoder
         self.encoder_feat_hybrid.patch_embeddings[0].proj = nn.Conv2d(
-            in_channels=self.hybrid_out_ch,
+            in_channels=self.hybrid_ch_in,
             out_channels=self.encoder_feat_hybrid.config.hidden_sizes[0],
             kernel_size=7,
             stride=4,
@@ -101,8 +144,6 @@ class SegformerCrossAttentionWrapperV2(nn.Module):
 
     def forward(self, image_rgb, labels=None, return_attention=False):
         image_rgb = image_rgb.float()
-
-        # --- Hybrid Features ---
         with torch.no_grad():
             if self.mode == "fft":
                 feat_hybrid = self.fft_magnitude_1ch(image_rgb)
@@ -118,6 +159,8 @@ class SegformerCrossAttentionWrapperV2(nn.Module):
                 feat_hybrid = self.fft_dct_stack(image_rgb)
             elif self.mode == "fft_dct_edge":
                 feat_hybrid = self.fft_dct_edge_stack(image_rgb)
+            elif self.mode == "wavelet":
+                feat_hybrid = self.wavelet_extractor(image_rgb)
             else:
                 feat_hybrid = utils.multiscale_scharr_edges(image_rgb)
 
@@ -137,7 +180,7 @@ class SegformerCrossAttentionWrapperV2(nn.Module):
             rgb_small = F.interpolate(rgb_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
             feat_small = F.interpolate(feat_hybrid_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
 
-            # Flatten für Cross-Attention
+            # flattening and reordering of the dimensions
             rgb_flat = rgb_small.flatten(2).transpose(1, 2)
             feat_flat = feat_small.flatten(2).transpose(1, 2)
 
@@ -148,13 +191,11 @@ class SegformerCrossAttentionWrapperV2(nn.Module):
             else:
                 attn_out = self.cross_attn_layers[i](rgb_flat, feat_flat)
 
-            fused = rgb_flat + attn_out
-
-            # Gating
+            # gating mechanism
             alpha = torch.sigmoid(self.gating_weights[i])
-            fused = alpha * rgb_flat + (1 - alpha) * fused
+            fused = rgb_flat + (1 - alpha) * attn_out
 
-            # Reshape zurück auf HxW
+            # reshaping (back to HxW)
             fused = fused.transpose(1, 2).view(B, C, int(H*self.downsample_factor), int(W*self.downsample_factor))
             fused = F.interpolate(fused, size=(H, W), mode='bilinear', align_corners=False)
 

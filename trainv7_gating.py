@@ -26,7 +26,7 @@ from torchmetrics.functional import jaccard_index
 import random
 
 # os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:8"
-SEED = 0
+SEED = 2
 
 scores = {}
 best_val_mean_IoU = 0
@@ -192,7 +192,7 @@ def main():
     
 
     # model = model_utils.get_model_by_name(MODEL_NAME, num_classes)
-    model = SegformerCrossAttentionWrapperV2(segformer_name='nvidia/mit-b5', mode="hsv", num_heads=4)
+    model = SegformerCrossAttentionWrapperV2(segformer_name='nvidia/mit-b5', mode="lab", num_heads=4)
 
     model = model.to(DEVICE)
    
