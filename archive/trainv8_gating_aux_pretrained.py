@@ -12,7 +12,7 @@ from torch_ema import ExponentialMovingAverage
 import pytorch_warmup as  warmup
 import model_utils
 from segformer_crossattention_wrapper import *
-from segformer_crossattention_wrapperv2_aux_pretrained import *
+from archive.segformer_crossattention_wrapperv2_aux_pretrained import *
 import os
 import json
 from losses import CombinedLoss, CombinedLossV2

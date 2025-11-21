@@ -8,7 +8,7 @@ from datasets.dataset_synthia_style import *
 from datasets.dataset_synthia_mixed import *
 from datasets.dataset_bdd import *
 from datasets.dataset_gta5 import *
-from advanced_augmentations import *
+from archive.advanced_augmentations import *
 import kornia
 import torch.nn.functional as F
 
