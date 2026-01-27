@@ -71,18 +71,18 @@ python train_crossattention_segformer.py \
   --train_print_steps 50 \
   --gpu 1
 
-  python trainv7_gating.py \
+  python train_crossattention_channel_wise_gating.py \
   --source_path ./synthia \
   --target_paths ./cityscapes ./bdd \
   --batch_size 2 \
   --model_name segformer \
   --lr 1.0e-5 \
   --optimizer adamw \
-  --epochs 70 \
+  --epochs 30 \
   --use_logging True \
-  --log_file ./logs/synthia_to_cs_and_bdd_lr1e5_and_lr1e4_crossattention_rgb_and_edges_conv_v2.json \
+  --log_file ./logs/synthia_to_cs_and_bdd_lr1e5_and_lr1e4_crossattention_rgb_and_edges_channel_wise_gating.json \
   --skip_val_source False \
   --decay_factor 0.995 \
   --weight_averaging False \
   --train_print_steps 50 \
-  --gpu 0
+  --gpu 1
