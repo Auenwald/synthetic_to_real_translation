@@ -199,8 +199,9 @@ def main():
 
     model = model.to(DEVICE)
    
-    optim, scheduler = get_optimizer_and_scheduler(model, optimizer_name=args.optimizer.lower(), lr=LR, total_steps=len(source_train_data_loader)*EPOCHS)
-
+    # optim, scheduler = get_optimizer_and_scheduler(model, optimizer_name=args.optimizer.lower(), lr=LR, total_steps=len(source_train_data_loader)*EPOCHS)
+    optim = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    scheduler = None
 
     if WEIGHT_AVERAGING:
         ema = ExponentialMovingAverage(filter(lambda p: p.requires_grad, model.parameters()), decay=DECAY_FACTOR)
@@ -267,7 +268,7 @@ def train(train_loader, model, optim, loss_fn, DEVICE, ema, scheduler, PRINT_INT
         optim.zero_grad()
         loss.backward()
         optim.step()
-        scheduler.step()
+        if scheduler: scheduler.step()
 
         if i > 0 and i % AVERAGING_INTERVAL == 0:
             if ema:

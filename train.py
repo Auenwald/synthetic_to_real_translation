@@ -92,13 +92,13 @@ def get_optimizer_and_scheduler(model, optimizer_name='adamw', lr=1e-5, total_st
     # create optimizer
     if optimizer_name == 'sgd':
         optimizer = torch.optim.SGD(param_groups, momentum=momentum, weight_decay=weight_decay)
-        print("Use SGD")
+        print("Using SGD")
     elif optimizer_name == 'adam':
         optimizer = torch.optim.Adam(param_groups, weight_decay=weight_decay)
-        print("Use Adam")
+        print("Using Adam")
     elif optimizer_name == 'adamw':
         optimizer = torch.optim.AdamW(param_groups, weight_decay=weight_decay)
-        print("Use AdamW")
+        print("Using AdamW")
 
     # LR-Scheduler
     def lr_lambda(step):
@@ -155,14 +155,15 @@ def main():
     num_classes = 16 if "synthia" in SOURCE_PATH else 19
 
     # init model
-    model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b1-finetuned-ade-512-512", ignore_mismatched_sizes=True, num_labels=num_classes)
+    model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b5-finetuned-ade-640-640", ignore_mismatched_sizes=True, num_labels=num_classes)
     
 
     # model = model_utils.get_model_by_name(MODEL_NAME, num_classes)
     model = model.to(DEVICE)
    
-    optim, scheduler = get_optimizer_and_scheduler(model, optimizer_name=args.optimizer.lower(), lr=LR, total_steps=len(source_train_data_loader)*EPOCHS)
-
+    # optim, scheduler = get_optimizer_and_scheduler(model, optimizer_name=args.optimizer.lower(), lr=LR, total_steps=len(source_train_data_loader)*EPOCHS)
+    optim = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    scheduler = None
 
     if WEIGHT_AVERAGING:
         ema = ExponentialMovingAverage(filter(lambda p: p.requires_grad, model.parameters()), decay=DECAY_FACTOR)
@@ -209,7 +210,7 @@ def train(train_loader, model, optim, loss_fn, DEVICE, ema, scheduler, PRINT_INT
         optim.zero_grad()
         loss.backward()
         optim.step()
-        scheduler.step()
+        if scheduler: scheduler.step()
 
         if i > 0 and i % AVERAGING_INTERVAL == 0:
             if ema:
@@ -235,7 +236,7 @@ def validate(val_loader, model, DEVICE, LOG_PATH, applied_ema, dataset_name, epo
     dataset_key = dataset_name + suffix
 
     # init confusion matrix
-    confusion_matrix = torch.zeros(num_classes, num_classes, dtype=torch.int64, device=DEVICE)
+    confusion_matrix = torch.zeros(num_classes, num_classes, dtype=torch.int64, device="cpu")
 
     for idx, (data, targets) in enumerate(val_loader):
 
@@ -256,7 +257,10 @@ def validate(val_loader, model, DEVICE, LOG_PATH, applied_ema, dataset_name, epo
         preds = torch.argmax(output, dim=1)
 
         # update confusion matrix
-        confusion_matrix += utils.torch_fast_hist(preds, targets, num_classes, device=DEVICE)
+        confusion_matrix += utils.torch_fast_hist(
+            preds.cpu(), targets.cpu(), num_classes, device="cpu"
+        )
+
 
         if idx % 10 == 0:
             print(f'[val-{dataset_name}{suffix}] - Epoch: {epoch}/{max_epochs} '
