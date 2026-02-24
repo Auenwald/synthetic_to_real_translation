@@ -28,13 +28,14 @@ SEED = 0
 best_val_mean_IoU = 0
 num_classes = 16
 
-torch.manual_seed(SEED)
-torch.cuda.manual_seed_all(SEED)
-np.random.seed(SEED)
-random.seed(SEED)
-# torch.use_deterministic_algorithms(True)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
+
+def set_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 def init_parser(parser):
     parser.add_argument('--source_path', default='./synthia', required=True, help='Path to the source dataset folder')
@@ -57,6 +58,7 @@ def init_parser(parser):
     parser.add_argument('--use_synthia_shapes', type=lambda x: x == 'True', default=False)
     parser.add_argument('--train_print_steps', type=int, default=50, help="Specify the number of iterations between two mIoU prints during training")
 
+    parser.add_argument('--seed', type=int, default=0, help='Random seed for reproducibility')
 
 
 def get_optimizer_and_scheduler(model, optimizer_name='adamw', lr=1e-5, total_steps=10000, warmup_steps=500, schedule=None, power=0.9, min_lr=1e-6):
@@ -133,6 +135,9 @@ def main():
     PRINT_INTERVAL = args.train_print_steps
     epoch_modifier = 0
 
+    SEED = args.seed
+    set_seed(SEED)
+
     DEVICE = f'cuda:{GPU}' if torch.cuda.is_available() else 'cpu'
     print(f'Found the following device: {DEVICE}')
 
@@ -150,10 +155,10 @@ def main():
     num_classes = 16 if "synthia" in SOURCE_PATH else 19
 
     # init model
-    # model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b1-finetuned-ade-512-512", ignore_mismatched_sizes=True, num_labels=num_classes)
+    model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b1-finetuned-ade-512-512", ignore_mismatched_sizes=True, num_labels=num_classes)
     
 
-    model = model_utils.get_model_by_name(MODEL_NAME, num_classes)
+    # model = model_utils.get_model_by_name(MODEL_NAME, num_classes)
     model = model.to(DEVICE)
    
     optim, scheduler = get_optimizer_and_scheduler(model, optimizer_name=args.optimizer.lower(), lr=LR, total_steps=len(source_train_data_loader)*EPOCHS)

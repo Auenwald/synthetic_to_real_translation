@@ -25,19 +25,19 @@ from torchmetrics.functional import jaccard_index
 import random
 
 # os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:8"
-SEED = 2
 
 scores = {}
 best_val_mean_IoU = 0
 num_classes = 16
 
-torch.manual_seed(SEED)
-torch.cuda.manual_seed_all(SEED)
-np.random.seed(SEED)
-random.seed(SEED)
-# torch.use_deterministic_algorithms(True)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
+def set_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"]="expandable_segments:True"
 
@@ -66,6 +66,7 @@ def init_parser(parser):
     parser.add_argument('--resume', type=lambda x: x == 'True', default=False, help='Resume training from last checkpoint')
     parser.add_argument('--checkpoint_path', type=str, default='./checkpoints/latest.pth', help='Path to save/load checkpoint')
 
+    parser.add_argument('--seed', type=int, default=0, help='Random seed for reproducibility')
 
 def save_checkpoint(path, model, optimizer, scheduler, epoch):
     checkpoint = {
@@ -171,6 +172,9 @@ def main():
 
     DEVICE = f'cuda:{GPU}' if torch.cuda.is_available() else 'cpu'
     print(f'Found the following device: {DEVICE}')
+
+    SEED = args.seed
+    set_seed(SEED)
 
 
 
