@@ -15,6 +15,7 @@ python train.py \
   --skip_val_source False \
   --decay_factor 0.995 \
   --weight_averaging True \
+  --averaging_interval 20 \
   --train_print_steps 50 \
   --gpu 3 \
   --seed 3
