@@ -18,5 +18,5 @@ python train.py \
   --averaging_interval 20 \
   --train_print_steps 50 \
   --gpu 3 \
-  --seed 3
+  --seed 0
   ############################# 

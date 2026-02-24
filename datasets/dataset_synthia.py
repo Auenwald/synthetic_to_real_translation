@@ -1,41 +1,12 @@
+from pathlib import Path
 from PIL import Image
-from torch.utils.data import DataLoader, Dataset
-import glob
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
+from torch.utils.data import Dataset
 import numpy as np
 import imageio
 import random
 
-# num_classes = 19
-num_classes = 16
-ignore_label = 255
 
-# trainid_to_trainid = {
-#         0: ignore_label,  # void
-#         1: 10,            # sky
-#         2: 2,             # building
-#         3: 0,             # road
-#         4: 1,             # sidewalk
-#         5: 4,             # fence
-#         6: 8,             # vegetation
-#         7: 5,             # pole
-#         8: 13,            # car
-#         9: 7,             # traffic sign
-#         10: 11,           # pedestrian - person
-#         11: 18,           # bicycle
-#         12: 17,           # motorcycle
-#         13: ignore_label, # parking-slot
-#         14: ignore_label, # road-work
-#         15: 6,            # traffic light
-#         16: 9,            # terrain - not present!
-#         17: 12,           # rider
-#         18: 14,           # truck - not present!
-#         19: 15,           # bus
-#         20: 16,           # train - - not present!
-#         21: 3,            # wall
-#         22: ignore_label  # Lanemarking
-#         }
+ignore_label = 255
 
 
 trainid_to_trainid = {
@@ -65,81 +36,85 @@ trainid_to_trainid = {
         }
 
 
-
-palette = [128, 64, 128, 244, 35, 232, 70, 70, 70, 102, 102, 156, 190, 153, 153,
-           153, 153, 153, 250, 170, 30,
-           220, 220, 0, 107, 142, 35, 152, 251, 152, 70, 130, 180, 220, 20, 60,
-           255, 0, 0, 0, 0, 142, 0, 0, 70,
-           0, 60, 100, 0, 80, 100, 0, 0, 230, 119, 11, 32]
-zero_pad = 256 * 3 - len(palette)
-for i in range(zero_pad):
-    palette.append(0)
-
-
-def colorize_mask(mask):
-    """
-    Colorize a segmentation mask.
-    """
-    # mask: numpy array of the mask
-    new_mask = Image.fromarray(mask.astype(np.uint8)).convert('P')
-    new_mask.putpalette(palette)
-    return new_mask
-
-
 class Synthia(Dataset):
-    def __init__(self, root_dir, split='train', transform=None, use_synthia_shapes=False):
-        self.root_dir = root_dir
-        self.images = sorted(glob.glob(f'{root_dir}/RGB/*.png'))
-        self.shapes = sorted(glob.glob(f'{root_dir}/GT/COLOR/*.png'))
-        self.masks = sorted(glob.glob(f'{root_dir}/GT/LABELS/*.png'))
-        self.use_synthia_shapes = use_synthia_shapes
-
-        self.num_classes = 16
-
+    def __init__(
+        self,
+        root_dir,
+        split="train",
+        transform=None,
+        use_synthia_shapes=False,
+        list_dir=None,
+        split_tag="seed1337_85-15",  # frei wählbar, siehe unten
+    ):
+        self.root_dir = Path(root_dir)
         self.split = split
         self.transform = transform
-        
-        if self.split == 'train':
-            self.images = self.images[0:8000]
-            self.shapes = self.shapes[0:8000]
-            self.masks = self.masks[0:8000]
-        elif self.split == 'val':
-            self.images = self.images[8000:8000+700]
-            self.shapes = self.shapes[8000:8000+700]
-            self.masks = self.masks[8000:8000+700]
+        self.use_synthia_shapes = use_synthia_shapes
+        self.num_classes = 16
+
+        list_base = Path(list_dir) if list_dir else self.root_dir
+        train_list = list_base / f"synthia_train_{split_tag}.txt"
+        val_list   = list_base / f"synthia_val_{split_tag}.txt"
+
+        if split == "train":
+            list_path = train_list
+        elif split == "val":
+            list_path = val_list
         else:
-            self.images = self.images[8000+700:]
-            self.shapes = self.shapes[8000+700:]
-            self.masks = self.masks[8000+700:]
+            raise ValueError("No source test split for DG")
+
+        if not list_path.exists():
+            raise FileNotFoundError(f"Split file not found: {list_path}")
+
+        names = [ln.strip() for ln in list_path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+
+        rgb_dir = self.root_dir / "RGB"
+        color_dir = self.root_dir / "GT" / "COLOR"
+        labels_dir_candidates = [
+            self.root_dir / "GT" / "labels",
+            self.root_dir / "GT" / "LABELS",
+        ]
+        labels_dir = next((p for p in labels_dir_candidates if p.exists()), None)
+        if labels_dir is None:
+            raise FileNotFoundError(f"Could not find labels dir in: {labels_dir_candidates}")
+
+        # Basename -> Path (robust)
+        rgb_map = {p.name: p for p in rgb_dir.glob("*.png")}
+        color_map = {p.name: p for p in color_dir.glob("*.png")}
+        label_map = {p.name: p for p in labels_dir.glob("*.png")}
+
+        missing = []
+        self.images, self.shapes, self.masks = [], [], []
+        for nm in names:
+            if nm not in rgb_map or nm not in color_map or nm not in label_map:
+                missing.append(nm)
+                continue
+            self.images.append(str(rgb_map[nm]))
+            self.shapes.append(str(color_map[nm]))
+            self.masks.append(str(label_map[nm]))
+
+        if missing:
+            raise FileNotFoundError(f"{len(missing)} files from split list missing. Example: {missing[:5]}")
 
     def __getitem__(self, index):
-
         if self.use_synthia_shapes and random.random() < 0.5:
-            img = Image.open(self.shapes[index]).convert('RGB')
+            img = Image.open(self.shapes[index]).convert("RGB")
         else:
-            img = Image.open(self.images[index]).convert('RGB')
+            img = Image.open(self.images[index]).convert("RGB")
 
-        # maybe necessary to install imageio plugins via: imageio.plugins.freeimage.download()
-        mask = np.asarray(imageio.imread(self.masks[index], format='PNG-FI'))[:, :, 0]
+        mask = np.asarray(imageio.imread(self.masks[index], format="PNG-FI"))[:, :, 0]
         img = np.array(img)
 
-        # label transformation
         mask = np.array(mask, dtype=np.uint8)
         mask_copy = mask.copy()
         for k, v in trainid_to_trainid.items():
             mask_copy[mask == k] = v
-
         mask = mask_copy
-        # mask = np.array(Image.fromarray(mask_copy.astype(np.uint8)))
 
-        # albumentations
-        
         if self.transform:
             transformed = self.transform(image=img, mask=mask)
-            return transformed['image'], transformed['mask']
-        else:
-            return img, mask
-
+            return transformed["image"], transformed["mask"]
+        return img, mask
 
     def __len__(self):
         return len(self.images)

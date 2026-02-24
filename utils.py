@@ -11,6 +11,7 @@ from datasets.dataset_gta5 import *
 from archive.advanced_augmentations import *
 import kornia
 import torch.nn.functional as F
+import cv2
 
 
 
@@ -108,66 +109,45 @@ BASE_H, BASE_W = 512, 1024   # oder 384, 768
 def aug_train_synthia():
     return A.Compose([
         A.HorizontalFlip(p=0.5),
-
-        # scale + crop auf low-res
         A.RandomResizedCrop(
-            height=BASE_H, width=BASE_W,
+            size=(BASE_H, BASE_W),
             scale=(0.5, 1.0), ratio=(0.75, 1.33), p=1.0
         ),
-
-        # Photometric
-        A.OneOf([
-            A.ColorJitter(brightness=0.25, contrast=0.25, saturation=0.25, hue=0.05, p=1.0),
-            A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=1.0),
-        ], p=0.8),
-
-        A.OneOf([
-            A.RandomGamma(gamma_limit=(80, 120), p=1.0),
-            A.CLAHE(clip_limit=2.0, tile_grid_size=(8,8), p=1.0),
-        ], p=0.2),
-
-        A.OneOf([
-            A.GaussianBlur(blur_limit=(3,5), p=1.0),
-            A.GaussNoise(var_limit=(10.0, 50.0), p=1.0),
-        ], p=0.2),
-
-        # optional: very light weather
-        # A.RandomFog(p=0.05),
-        # A.RandomRain(p=0.05),
-
+        # ...
         A.Normalize(mean=(0.485,0.456,0.406), std=(0.229,0.224,0.225)),
         ToTensorV2(),
-    ])
+    ], mask_interpolation=cv2.INTER_NEAREST
+    )
+
+
 
 def aug_train_gta5():
     return A.Compose([
         A.HorizontalFlip(p=0.5),
-
         A.RandomResizedCrop(
-            height=BASE_H, width=BASE_W,
+            size=(BASE_H, BASE_W),
             scale=(0.5, 1.0), ratio=(0.75, 1.33), p=1.0
         ),
-
         A.OneOf([
             A.RandomBrightnessContrast(brightness_limit=0.15, contrast_limit=0.15, p=1.0),
             A.ColorJitter(brightness=0.15, contrast=0.15, saturation=0.15, hue=0.03, p=1.0),
         ], p=0.7),
-
         A.OneOf([
             A.GaussianBlur(blur_limit=(3,5), p=1.0),
             A.GaussNoise(var_limit=(5.0, 30.0), p=1.0),
         ], p=0.15),
-
         A.Normalize(mean=(0.485,0.456,0.406), std=(0.229,0.224,0.225)),
         ToTensorV2(),
-    ])
+    ], mask_interpolation=cv2.INTER_NEAREST)
+
+
 
 def aug_eval():
     return A.Compose([
         A.Resize(BASE_H, BASE_W),
         A.Normalize(mean=(0.485,0.456,0.406), std=(0.229,0.224,0.225)),
         ToTensorV2(),
-    ])
+    ], mask_interpolation=cv2.INTER_NEAREST)
 
 
 def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, use_synthia_shapes=False):
