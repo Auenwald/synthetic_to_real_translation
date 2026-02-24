@@ -12,10 +12,10 @@ from transformers.modeling_outputs import SemanticSegmenterOutput
 
 def get_model_by_name(name, num_classes):
     if "segformer" in name.lower():
-        print("Using SegFormer B1")
+        print("Using SegFormer B5")
 
-        backbone = SegformerModel.from_pretrained('nvidia/mit-b1')
-        config = SegformerConfig.from_pretrained('nvidia/mit-b1', num_labels=num_classes)
+        backbone = SegformerModel.from_pretrained('nvidia/mit-b5')
+        config = SegformerConfig.from_pretrained('nvidia/mit-b5', num_labels=num_classes)
 
         model = SegformerForSemanticSegmentation(config)
         model.segformer.load_state_dict(backbone.state_dict(), strict=False)

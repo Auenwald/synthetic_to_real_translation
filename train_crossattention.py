@@ -63,6 +63,10 @@ def init_parser(parser):
     parser.add_argument('--gpu', type=int, default=0, help="Specify the gpu used for training")
     parser.add_argument('--use_synthia_shapes', type=lambda x: x == 'True', default=False)
     parser.add_argument('--train_print_steps', type=int, default=50, help="Specify the number of iterations between two mIoU prints during training")
+    
+    parser.add_argument('--modality', type=str, default='edge', choices=['edge', 'dct', 'fft', 'hsv', 'lab', 'wavelet'], 
+                        help='Modality for cross-attention')
+
 
     parser.add_argument('--resume', type=lambda x: x == 'True', default=False, help='Resume training from last checkpoint')
     parser.add_argument('--checkpoint_path', type=str, default='./checkpoints/latest.pth', help='Path to save/load checkpoint')
@@ -166,6 +170,7 @@ def main():
     SOURCE_DATASET_NAME = SOURCE_PATH.split("/")[-1].lower().strip()
     GPU = args.gpu
     USE_SYNTHIA_SHAPES = args.use_synthia_shapes
+    MODALITY = args.modality
 
     USE_LOGGING, LOG_PATH = args.use_logging, args.log_file
     PRINT_INTERVAL = args.train_print_steps
@@ -192,7 +197,7 @@ def main():
     
 
     # model = model_utils.get_model_by_name(MODEL_NAME, num_classes)
-    model = SegformerCrossAttentionWrapperV2(segformer_name='nvidia/mit-b5', mode="lab", num_heads=4)
+    model = SegformerCrossAttentionWrapperV2(segformer_name='nvidia/mit-b5', mode=MODALITY, num_heads=4)
 
     model = model.to(DEVICE)
    
