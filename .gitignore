@@ -1,8 +1,9 @@
 *.png
 *.jpg
-*.json
 venv
 logs_final/*.txt
+logs/
 __pycache__
 scripts/*.sh
 checkpoints
+cityscapes/
