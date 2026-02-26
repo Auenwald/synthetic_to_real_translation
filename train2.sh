@@ -15,7 +15,7 @@ python train_sgd.py \
   --weight_averaging True \
   --averaging_interval 20 \
   --train_print_steps 50 \
-  --gpu 2 \
+  --gpu 3 \
   --seed 4
   ############################# 
 
@@ -36,7 +36,7 @@ python train_sgd.py \
   --weight_averaging True \
   --averaging_interval 20 \
   --train_print_steps 50 \
-  --gpu 2 \
+  --gpu 3 \
   --seed 0
   ############################# 
 
@@ -57,6 +57,6 @@ python train_sgd.py \
   --weight_averaging True \
   --averaging_interval 20 \
   --train_print_steps 50 \
-  --gpu 2 \
+  --gpu 3 \
   --seed 1
   ############################# 
