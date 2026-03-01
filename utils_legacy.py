@@ -1,0 +1,280 @@
+import numpy as np
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+from torch.utils.data import DataLoader, Dataset
+from datasets.dataset_cityscapes import *
+from datasets.dataset_synthia import *
+from datasets.dataset_bdd import *
+from datasets.dataset_gta5 import *
+import kornia
+import torch.nn.functional as F
+import cv2
+
+import inspect
+import warnings
+import random
+import torch
+
+
+
+def torch_fast_hist(preds: torch.Tensor, targets: torch.Tensor, num_classes: int, device="cpu"):
+    """
+    Baut eine Confusion-Matrix direkt in PyTorch.
+    preds:   [N, H, W] (argmax über Klassen)
+    targets: [N, H, W] (ground truth)
+    """
+    preds = preds.view(-1)
+    targets = targets.view(-1)
+
+    mask = (targets >= 0) & (targets < num_classes)
+    preds = preds[mask]
+    targets = targets[mask]
+
+    indices = targets * num_classes + preds
+    hist = torch.bincount(
+        indices,
+        minlength=num_classes ** 2
+    ).reshape(num_classes, num_classes).to(device)
+
+    return hist
+
+def compute_mIoU_and_per_class_from_hist(conf_matrix: torch.Tensor):
+    num_classes = conf_matrix.shape[0]
+
+    TP = conf_matrix.diag()
+    FP = conf_matrix.sum(dim=0) - TP
+    FN = conf_matrix.sum(dim=1) - TP
+
+    per_class_IoU = TP / (TP + FP + FN + 1e-6)
+    per_class_dict = {int(c): float(per_class_IoU[c].item())
+                      for c in range(num_classes) if conf_matrix.sum(dim=1)[c] > 0}
+
+    mean_iou = sum(per_class_dict.values()) / len(per_class_dict) if len(per_class_dict) > 0 else 0.0
+    return mean_iou, per_class_dict
+
+
+def sobel_edges(images):
+    # images: [B, 3, H, W] -> Graustufen + Sobel
+    gray = images.mean(dim=1, keepdim=True)  # [B,1,H,W]
+    kernel_x = torch.tensor([[1,0,-1],[2,0,-2],[1,0,-1]], dtype=torch.float32, device=images.device).view(1,1,3,3)
+    kernel_y = torch.tensor([[1,2,1],[0,0,0],[-1,-2,-1]], dtype=torch.float32, device=images.device).view(1,1,3,3)
+    grad_x = F.conv2d(gray, kernel_x, padding=1)
+    grad_y = F.conv2d(gray, kernel_y, padding=1)
+    edges = torch.sqrt(grad_x**2 + grad_y**2)
+    edges = edges / (edges.max(dim=2, keepdim=True)[0].max(dim=3, keepdim=True)[0] + 1e-6)  # normalize per image
+    return edges
+
+def multiscale_scharr_edges(images, sigmas=(0.5, 1.0, 2.0)):
+    # images: [B, 3, H, W]
+    device = images.device
+    gray = images.mean(dim=1, keepdim=True)  # [B,1,H,W]
+    
+    # Scharr-Kernel
+    kernel_x = torch.tensor([[3, 0, -3],
+                             [10, 0, -10],
+                             [3, 0, -3]], dtype=torch.float32, device=device).view(1,1,3,3)
+    kernel_y = torch.tensor([[3, 10, 3],
+                             [0, 0, 0],
+                             [-3, -10, -3]], dtype=torch.float32, device=device).view(1,1,3,3)
+    
+    edges_multi = []
+    for s in sigmas:
+        blurred = kornia.filters.gaussian_blur2d(gray, (5, 5), (s, s))
+        grad_x = F.conv2d(blurred, kernel_x, padding=1)
+        grad_y = F.conv2d(blurred, kernel_y, padding=1)
+        edges_multi.append(torch.sqrt(grad_x**2 + grad_y**2))
+    
+    # Max-Pooling über Skalen
+    edges = torch.max(torch.stack(edges_multi, dim=0), dim=0)[0]
+    
+    # Normierung pro Bild
+    edges = edges / (edges.amax(dim=(2, 3), keepdim=True) + 1e-6)
+    return edges
+
+
+# =========================
+# Albumentations compatibility
+# =========================
+
+_COMPOSE_ALLOWED = None
+
+def ACompose(transforms, **kwargs):
+    """
+    Create A.Compose but drop kwargs that the installed albumentations version
+    doesn't support (e.g., mask_interpolation in older versions).
+
+    Example:
+        ACompose([...], mask_interpolation=cv2.INTER_NEAREST)
+    """
+    global _COMPOSE_ALLOWED
+    if _COMPOSE_ALLOWED is None:
+        sig = inspect.signature(A.Compose.__init__)
+        _COMPOSE_ALLOWED = set(sig.parameters.keys())
+
+    filtered = {k: v for k, v in kwargs.items() if k in _COMPOSE_ALLOWED}
+    dropped = sorted(set(kwargs) - set(filtered))
+    if dropped:
+        warnings.warn(
+            f"ACompose: Ignoring unsupported A.Compose kwargs: {dropped}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    return A.Compose(transforms, **filtered)
+
+
+_RRC_ALLOWED = None
+
+def ARandomResizedCrop(*, size=None, height=None, width=None, **kwargs):
+    """
+    Backwards-compatible RandomResizedCrop:
+    - Newer albumentations: RandomResizedCrop(size=(H,W), ...)
+    - Older albumentations: RandomResizedCrop(height=H, width=W, ...)
+
+    Use it like:
+        ARandomResizedCrop(size=(H,W), scale=(...), ratio=(...), p=1.0)
+    """
+    global _RRC_ALLOWED
+    if _RRC_ALLOWED is None:
+        sig = inspect.signature(A.RandomResizedCrop.__init__)
+        _RRC_ALLOWED = set(sig.parameters.keys())
+
+    if "size" in _RRC_ALLOWED:
+        # New API
+        if size is None:
+            if height is None or width is None:
+                raise ValueError("Provide either size=(H,W) or height+width.")
+            size = (height, width)
+        return A.RandomResizedCrop(size=size, **kwargs)
+
+    # Old API
+    if height is None or width is None:
+        if size is None:
+            raise ValueError("Provide either size=(H,W) or height+width.")
+        height, width = size
+    return A.RandomResizedCrop(height=height, width=width, **kwargs)
+
+
+def get_augmentation(dataset_name, split):
+    name = dataset_name.lower()
+    if split == "train":
+        if "synthia" in name:
+            return aug_train_synthia()
+        if "gta5" in name:
+            return aug_train_gta5()
+        # fallback train
+        return aug_train_gta5()
+    else:
+        return aug_eval()
+    
+
+
+BASE_H, BASE_W = 512, 1024   # oder 384, 768
+
+def aug_train_synthia():
+    return ACompose(
+        [
+            A.HorizontalFlip(p=0.5),
+            ARandomResizedCrop(
+                size=(BASE_H, BASE_W),
+                scale=(0.5, 1.0),
+                ratio=(0.75, 1.33),
+                p=1.0,
+            ),
+            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            ToTensorV2(),
+        ],
+        mask_interpolation=cv2.INTER_NEAREST,  # will be ignored on older albumentations
+    )
+
+
+
+def aug_train_gta5():
+    return ACompose(
+        [
+            A.HorizontalFlip(p=0.5),
+            ARandomResizedCrop(
+                size=(BASE_H, BASE_W),
+                scale=(0.5, 1.0),
+                ratio=(0.75, 1.33),
+                p=1.0,
+            ),
+            A.OneOf(
+                [
+                    A.RandomBrightnessContrast(
+                        brightness_limit=0.15, contrast_limit=0.15, p=1.0
+                    ),
+                    A.ColorJitter(
+                        brightness=0.15, contrast=0.15, saturation=0.15, hue=0.03, p=1.0
+                    ),
+                ],
+                p=0.7,
+            ),
+            A.OneOf(
+                [
+                    A.GaussianBlur(blur_limit=(3, 5), p=1.0),
+                    A.GaussNoise(var_limit=(5.0, 30.0), p=1.0),
+                ],
+                p=0.15,
+            ),
+            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            ToTensorV2(),
+        ],
+        mask_interpolation=cv2.INTER_NEAREST,  # ignored on older versions
+    )
+
+
+def aug_eval():
+    return ACompose(
+        [
+            A.Resize(BASE_H, BASE_W),
+            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            ToTensorV2(),
+        ],
+        mask_interpolation=cv2.INTER_NEAREST,  # ignored on older versions
+    )
+
+
+
+def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, use_synthia_shapes=False):
+    if "cityscapes" in dataset_name:
+        print("Use cityscapes as the target dataset")
+        dataset = CityScapes(path, split='val', transform=get_augmentation('cityscapes', 'val'))
+    elif "bdd" in dataset_name:
+        print("Use bdd as the target dataset")
+        dataset = BDD(path, split='val', transform=get_augmentation('bdd', 'val'))
+
+    elif "synthiastyle" in dataset_name:
+        print("Use synthia-style as the source dataset")
+        if split == "train":
+            dataset = SynthiaStyle(root_dir=path, split='train', transform=get_augmentation('synthia', 'train'), use_synthia_shapes=use_synthia_shapes)
+        else:
+            dataset = SynthiaStyle(root_dir=path, split='val', transform=get_augmentation('synthia', 'val'))
+
+    elif "synthiamixed" in dataset_name:
+        print("Use synthia-mixed as the source dataset")
+        if split == "train":
+            dataset = SynthiaMixed(root_dir='./synthia', split='train', transform=get_augmentation('synthia', 'train'))
+        else:
+            dataset = SynthiaMixed(root_dir='./synthia', split='val', transform=get_augmentation('synthia', 'val'))
+
+    elif "synthia" in dataset_name:
+        print("Use synthia as the source dataset")
+        if split == "train":
+            dataset = Synthia(root_dir=path, split='train', transform=get_augmentation('synthia', 'train'), use_synthia_shapes=use_synthia_shapes)
+        else:
+            dataset = Synthia(root_dir=path, split='val', transform=get_augmentation('synthia', 'val'))
+
+    elif "gta5" in dataset_name:
+        print("Use Gta 5 as the source dataset")
+        if split == "train":
+            dataset = GTA5(root_dir=path, split='train', transform=get_augmentation('gta5', 'train'))
+        else:
+            dataset = GTA5(root_dir=path, split='val', transform=get_augmentation('gta5', 'val'))
+
+ 
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=True)
+
+
+
+def get_image_size(dataset_name):
+    return (BASE_H, BASE_W)
