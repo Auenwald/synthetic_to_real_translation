@@ -9,7 +9,8 @@ from datasets.dataset_gta5 import *
 import kornia
 import torch.nn.functional as F
 import cv2
-
+import inspect
+import warnings
 
 def seed_worker(worker_id: int):
     worker_seed = torch.initial_seed() % 2**32
@@ -106,6 +107,33 @@ def get_augmentation(dataset_name, split, seed=None):
     
 
 
+_GAUSS_ALLOWED = None
+
+def AGaussNoise(std_range=(0.01, 0.03), var_limit=(5.0, 30.0), p=1.0):
+    """
+    Version-robuster GaussNoise:
+    - nutzt std_range, wenn verfügbar
+    - sonst var_limit
+    """
+    global _GAUSS_ALLOWED
+    if _GAUSS_ALLOWED is None:
+        sig = inspect.signature(A.GaussNoise.__init__)
+        _GAUSS_ALLOWED = set(sig.parameters.keys())
+
+    if "std_range" in _GAUSS_ALLOWED:
+        return A.GaussNoise(std_range=std_range, p=p)
+
+    if "var_limit" in _GAUSS_ALLOWED:
+        return A.GaussNoise(var_limit=var_limit, p=p)
+
+    warnings.warn(
+        "AGaussNoise: unknown GaussNoise API, using defaults.",
+        RuntimeWarning,
+        stacklevel=2,
+    )
+    return A.GaussNoise(p=p)
+
+
 BASE_H, BASE_W = 512, 1024   # oder 384, 768
 
 def aug_train_synthia(seed=None):
@@ -176,7 +204,7 @@ def aug_train_dg(seed=None):
 
         A.OneOf([
             A.GaussianBlur(blur_limit=(3, 7), p=1.0),
-            A.GaussNoise(std_range=(0.01, 0.03), p=1.0)
+            AGaussNoise(std_range=(0.01, 0.03), p=1.0)
         ], p=0.2),
 
         A.Normalize(mean=(0.485,0.456,0.406),
