@@ -4,15 +4,17 @@ from albumentations.pytorch import ToTensorV2
 from torch.utils.data import DataLoader, Dataset
 from datasets.dataset_cityscapes import *
 from datasets.dataset_synthia import *
-from datasets.dataset_synthia_style import *
-from datasets.dataset_synthia_mixed import *
 from datasets.dataset_bdd import *
 from datasets.dataset_gta5 import *
-from archive.advanced_augmentations import *
 import kornia
 import torch.nn.functional as F
 import cv2
 
+
+def seed_worker(worker_id: int):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
 
 
 def torch_fast_hist(preds: torch.Tensor, targets: torch.Tensor, num_classes: int, device="cpu"):
@@ -90,15 +92,15 @@ def multiscale_scharr_edges(images, sigmas=(0.5, 1.0, 2.0)):
     return edges
 
 
-def get_augmentation(dataset_name, split):
+def get_augmentation(dataset_name, split, seed=None):
     name = dataset_name.lower()
     if split == "train":
         if "synthia" in name:
-            return aug_train_synthia()
+            return aug_train_dg(seed=seed)
         if "gta5" in name:
-            return aug_train_gta5()
+            return aug_train_dg(seed=seed)
         # fallback train
-        return aug_train_gta5()
+        return aug_train_dg(seed=seed)
     else:
         return aug_eval()
     
@@ -106,22 +108,20 @@ def get_augmentation(dataset_name, split):
 
 BASE_H, BASE_W = 512, 1024   # oder 384, 768
 
-def aug_train_synthia():
+def aug_train_synthia(seed=None):
     return A.Compose([
         A.HorizontalFlip(p=0.5),
         A.RandomResizedCrop(
             size=(BASE_H, BASE_W),
             scale=(0.5, 1.0), ratio=(0.75, 1.33), p=1.0
         ),
-        # ...
         A.Normalize(mean=(0.485,0.456,0.406), std=(0.229,0.224,0.225)),
         ToTensorV2(),
-    ], mask_interpolation=cv2.INTER_NEAREST
+    ], mask_interpolation=cv2.INTER_NEAREST, seed=seed
     )
 
 
-
-def aug_train_gta5():
+def aug_train_gta5(seed=None):
     return A.Compose([
         A.HorizontalFlip(p=0.5),
         A.RandomResizedCrop(
@@ -134,11 +134,11 @@ def aug_train_gta5():
         ], p=0.7),
         A.OneOf([
             A.GaussianBlur(blur_limit=(3,5), p=1.0),
-            A.GaussNoise(var_limit=(5.0, 30.0), p=1.0),
+            A.GaussNoise(std_range=(0.01, 0.03), p=1.0),
         ], p=0.15),
         A.Normalize(mean=(0.485,0.456,0.406), std=(0.229,0.224,0.225)),
         ToTensorV2(),
-    ], mask_interpolation=cv2.INTER_NEAREST)
+    ], mask_interpolation=cv2.INTER_NEAREST, seed=seed)
 
 
 
@@ -150,7 +150,43 @@ def aug_eval():
     ], mask_interpolation=cv2.INTER_NEAREST)
 
 
-def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, use_synthia_shapes=False):
+
+def aug_train_dg(seed=None):
+    return A.Compose([
+        A.HorizontalFlip(p=0.5),
+
+        A.RandomResizedCrop(
+            size=(BASE_H, BASE_W),
+            scale=(0.75, 1.0),
+            ratio=(0.85, 1.2),
+            p=1.0
+        ),
+
+        A.OneOf([
+            A.RandomBrightnessContrast(
+                brightness_limit=0.25,
+                contrast_limit=0.25,
+                p=1.0),
+            A.ColorJitter(
+                brightness=0.3,
+                contrast=0.3,
+                saturation=0.3,
+                hue=0.08,
+                p=1.0),
+        ], p=0.8),
+
+        A.OneOf([
+            A.GaussianBlur(blur_limit=(3, 7), p=1.0),
+            A.GaussNoise(std_range=(0.01, 0.03), p=1.0)
+        ], p=0.2),
+
+        A.Normalize(mean=(0.485,0.456,0.406),
+                    std=(0.229,0.224,0.225)),
+        ToTensorV2(),
+    ], mask_interpolation=cv2.INTER_NEAREST, seed=seed)
+
+
+def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, use_synthia_shapes=False, seed=0, num_workers=1):
     if "cityscapes" in dataset_name:
         print("Use cityscapes as the target dataset")
         dataset = CityScapes(path, split='val', transform=get_augmentation('cityscapes', 'val'))
@@ -175,19 +211,20 @@ def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, 
     elif "synthia" in dataset_name:
         print("Use synthia as the source dataset")
         if split == "train":
-            dataset = Synthia(root_dir=path, split='train', transform=get_augmentation('synthia', 'train'), use_synthia_shapes=use_synthia_shapes)
+            dataset = Synthia(root_dir=path, split='train', transform=get_augmentation('synthia', 'train', seed=seed), use_synthia_shapes=use_synthia_shapes, base_seed=seed)
         else:
-            dataset = Synthia(root_dir=path, split='val', transform=get_augmentation('synthia', 'val'))
+            dataset = Synthia(root_dir=path, split='val', transform=get_augmentation('synthia', 'val', seed=seed), base_seed=seed)
 
     elif "gta5" in dataset_name:
         print("Use Gta 5 as the source dataset")
         if split == "train":
-            dataset = GTA5(root_dir=path, split='train', transform=get_augmentation('gta5', 'train'))
+            dataset = GTA5(root_dir=path, split='train', transform=get_augmentation('gta5', 'train', seed=seed))
         else:
-            dataset = GTA5(root_dir=path, split='val', transform=get_augmentation('gta5', 'val'))
+            dataset = GTA5(root_dir=path, split='val', transform=get_augmentation('gta5', 'val', seed=seed))
 
- 
-    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=True)
+    g = torch.Generator()
+    g.manual_seed(seed)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=False, num_workers=1, prefetch_factor=1, worker_init_fn=seed_worker, generator=g)
 
 
 

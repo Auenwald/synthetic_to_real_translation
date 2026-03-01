@@ -22,19 +22,28 @@ from torch.amp import autocast, GradScaler
 from torchmetrics.functional import jaccard_index
 import random
 
-os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:8"
 
 best_val_mean_IoU = 0
 num_classes = 16
 
 
 def set_seed(seed):
+
+    os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:8"
+    os.environ["PYTHONHASHSEED"] = str(seed)
+
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
+
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+    # torch.use_deterministic_algorithms(True, warn_only=True)
+
+
+
 
 def init_parser(parser):
     parser.add_argument('--source_path', default='./synthia', required=True, help='Path to the source dataset folder')
@@ -142,13 +151,13 @@ def main():
 
 
     # define the dataloader
-    source_train_data_loader = utils.get_dataloader_from_dataset(SOURCE_PATH, SOURCE_DATASET_NAME, 'train', batch_size=BATCH_SIZE, shuffle=False, use_synthia_shapes=USE_SYNTHIA_SHAPES)
-    source_val_data_loader = utils.get_dataloader_from_dataset(SOURCE_PATH, SOURCE_DATASET_NAME, 'val', batch_size=1, shuffle=False)
+    source_train_data_loader = utils.get_dataloader_from_dataset(SOURCE_PATH, SOURCE_DATASET_NAME, 'train', batch_size=BATCH_SIZE, shuffle=True, use_synthia_shapes=USE_SYNTHIA_SHAPES, seed=SEED)
+    source_val_data_loader = utils.get_dataloader_from_dataset(SOURCE_PATH, SOURCE_DATASET_NAME, 'val', batch_size=1, shuffle=False, seed=SEED)
 
     target_val_loaders = {}
     for target_path in TARGET_PATHS:
         target_name = target_path.split("/")[-1].lower().strip()
-        target_val_loaders[target_name] = utils.get_dataloader_from_dataset(target_path, target_name, 'val', batch_size=1, shuffle=False)
+        target_val_loaders[target_name] = utils.get_dataloader_from_dataset(target_path, target_name, 'val', batch_size=1, shuffle=False, seed=SEED)
 
     global num_classes
     num_classes = 16 if "synthia" in SOURCE_PATH else 19
@@ -172,6 +181,9 @@ def main():
     loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
 
     for epoch in range(1 + epoch_modifier, EPOCHS + 1 + epoch_modifier):
+        # change albumentations per epoch
+        if hasattr(source_train_data_loader.dataset, "set_epoch"):
+            source_train_data_loader.dataset.set_epoch(epoch)
          
         train(source_train_data_loader, model, optim, loss_fn, DEVICE, ema, scheduler, PRINT_INTERVAL, AVERAGING_INTERVAL, SOURCE_DATASET_NAME)
 
@@ -202,7 +214,7 @@ def train(train_loader, model, optim, loss_fn, DEVICE, ema, scheduler, PRINT_INT
 
         h, w = data.shape[2], data.shape[3]
         logits = torch.nn.functional.interpolate(logits, size=(h, w), mode='bilinear', align_corners=False)
-    
+
         loss = loss_fn(logits, targets)
 
         # optimizer area
@@ -219,14 +231,18 @@ def train(train_loader, model, optim, loss_fn, DEVICE, ema, scheduler, PRINT_INT
 
         # Print
         if i > 0 and i % PRINT_INTERVAL == 0:
+            # loss zuerst (kein no_grad nötig)
+            print(f"[train-{SOURCE_DATASET_NAME}] Progress: {i}/{len(train_loader)}, "
+                f"loss: {loss.item():.8f}, lr: {optim.param_groups[0]['lr']}")
+
             with torch.no_grad():
                 preds = torch.argmax(logits, dim=1)
                 mean_iou = jaccard_index(
                     task='multiclass', ignore_index=255,
                     num_classes=num_classes, preds=preds, target=targets
                 ) * 100
-                print(f'[train-{SOURCE_DATASET_NAME}] Progress: {i}/{len(train_loader)}, '
-                      f'mean-IoU: {mean_iou:.2f}, lr: {optim.param_groups[0]["lr"]}')
+                print(f"[train-{SOURCE_DATASET_NAME}] Progress: {i}/{len(train_loader)}, "
+                    f"mean-IoU: {mean_iou:.2f}, lr: {optim.param_groups[0]['lr']}")
 
 
 def validate(val_loader, model, DEVICE, LOG_PATH, applied_ema, dataset_name, epoch, max_epochs):

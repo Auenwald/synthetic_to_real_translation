@@ -48,30 +48,44 @@ label_to_trainid = {
 }
 
 class GTA5(Dataset):
-    def __init__(self, root_dir, split='train', num_classes=19, transform=None):
+    def __init__(
+        self,
+        root_dir,
+        split='train',
+        num_classes=19,
+        transform=None,
+        base_seed: int = 0,     # <- NEU
+    ):
         self.label_to_trainid = label_to_trainid
         self.root_dir = root_dir
         self.split = split
         self.images = sorted(glob.glob(f'{root_dir}/images/*.png'))
-        self.masks = sorted(glob.glob(f'{root_dir}/labels/*.png'))
+        self.masks  = sorted(glob.glob(f'{root_dir}/labels/*.png'))
 
-        train_split_index = int(0.8*len(self.images))
-        val_test_size = int(0.1*len(self.images))
+        train_split_index = int(0.8 * len(self.images))
+        val_test_size = int(0.1 * len(self.images))
 
         if self.split == 'train':
             self.images = self.images[0:train_split_index]
-            self.masks = self.masks[0:train_split_index]
+            self.masks  = self.masks[0:train_split_index]
         elif self.split == 'val':
-            self.images = self.images[train_split_index:train_split_index+val_test_size]
-            self.masks = self.masks[train_split_index:train_split_index+val_test_size]
+            self.images = self.images[train_split_index:train_split_index + val_test_size]
+            self.masks  = self.masks[train_split_index:train_split_index + val_test_size]
         else:
-            self.images = self.images[train_split_index+val_test_size:]
-            self.masks = self.masks[train_split_index+val_test_size:]
-
+            self.images = self.images[train_split_index + val_test_size:]
+            self.masks  = self.masks[train_split_index + val_test_size:]
 
         self.transform = transform
         self.num_classes = num_classes
-    
+
+        # <- NEU
+        self.base_seed = int(base_seed)
+        self.epoch = 0
+
+    # <- NEU (optional)
+    def set_epoch(self, epoch: int):
+        self.epoch = int(epoch)
+
     def __getitem__(self, index):
         img = np.array(Image.open(self.images[index]))
         mask = np.array(Image.open(self.masks[index]))
@@ -85,17 +99,28 @@ class GTA5(Dataset):
             print(f"[WARN] Auflösung mismatch bei idx {index}: image={img.shape}, label={mask.shape}")
             return None, None
 
+        # ---- NEU: deterministischer per-sample seed ----
+        s = self.base_seed + index + self.epoch * 1_000_000
 
-        # albumentations
+        # falls du irgendwo eigene Randomness hast (oder später einbaust)
+        random.seed(s)
+        np.random.seed(s)
+
+        # Albumentations-internen RNG setzen (entscheidend!)
+        if self.transform is not None and hasattr(self.transform, "set_random_seed"):
+            self.transform.set_random_seed(s)
+        # -----------------------------------------------
+
         if self.transform:
             transformed = self.transform(image=img, mask=mask)
-            if transformed['image'].shape[1] != transformed['mask'].shape[0] or transformed['image'].shape[2] != transformed['mask'].shape[1]:
+
+            if (transformed['image'].shape[1] != transformed['mask'].shape[0] or
+                transformed['image'].shape[2] != transformed['mask'].shape[1]):
                 print(f"[WARN] Auflösung mismatch bei idx {index}: image={transformed['image'].shape}, label={transformed['mask'].shape}")
 
             return transformed['image'], transformed['mask']
         else:
             return img, mask
-
 
     def __len__(self):
         return len(self.images)
