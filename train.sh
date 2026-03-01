@@ -54,9 +54,9 @@ python train.py \
   --log_file ./logs_diss/synthia_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0995_averaging_interval_100_seed_2.json \
   --skip_val_source False \
   --decay_factor 0.995 \
-  --weight_averaging True \
+  --weight_averaging False \
   --averaging_interval 100 \
-  --train_print_steps 50 \
+  --train_print_steps 5 \
   --gpu 2 \
   --seed 2
   ############################# 

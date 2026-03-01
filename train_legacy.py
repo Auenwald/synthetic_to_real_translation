@@ -22,7 +22,6 @@ from torchmetrics.functional import jaccard_index
 import random
 
 # os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:8"
-SEED = 0
 
 best_val_mean_IoU = 0
 num_classes = 16

@@ -22,8 +22,7 @@ from torch.amp import autocast, GradScaler
 from torchmetrics.functional import jaccard_index
 import random
 
-# os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:8"
-SEED = 0
+os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:8"
 
 best_val_mean_IoU = 0
 num_classes = 16
@@ -143,7 +142,7 @@ def main():
 
 
     # define the dataloader
-    source_train_data_loader = utils.get_dataloader_from_dataset(SOURCE_PATH, SOURCE_DATASET_NAME, 'train', batch_size=BATCH_SIZE, shuffle=True, use_synthia_shapes=USE_SYNTHIA_SHAPES)
+    source_train_data_loader = utils.get_dataloader_from_dataset(SOURCE_PATH, SOURCE_DATASET_NAME, 'train', batch_size=BATCH_SIZE, shuffle=False, use_synthia_shapes=USE_SYNTHIA_SHAPES)
     source_val_data_loader = utils.get_dataloader_from_dataset(SOURCE_PATH, SOURCE_DATASET_NAME, 'val', batch_size=1, shuffle=False)
 
     target_val_loaders = {}
