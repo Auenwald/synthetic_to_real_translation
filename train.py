@@ -181,10 +181,6 @@ def main():
     loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
 
     for epoch in range(1 + epoch_modifier, EPOCHS + 1 + epoch_modifier):
-        # change albumentations per epoch
-        if hasattr(source_train_data_loader.dataset, "set_epoch"):
-            source_train_data_loader.dataset.set_epoch(epoch)
-         
         train(source_train_data_loader, model, optim, loss_fn, DEVICE, ema, scheduler, PRINT_INTERVAL, AVERAGING_INTERVAL, SOURCE_DATASET_NAME)
 
          # Validation

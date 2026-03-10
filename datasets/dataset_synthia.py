@@ -48,16 +48,12 @@ class Synthia(Dataset):
         use_synthia_shapes=False,
         list_dir=None,
         split_tag="seed1337_85-15", 
-        base_seed = 0
     ):
         self.root_dir = Path(root_dir)
         self.split = split
         self.transform = transform
         self.use_synthia_shapes = use_synthia_shapes
         self.num_classes = 16
-
-        self.base_seed = int(base_seed)  # <-- NEU
-        self.epoch = 0                   # <-- NEU (optional)
 
         list_base = Path(list_dir) if list_dir else self.root_dir
         train_list = list_base / f"synthia_train_{split_tag}.txt"
@@ -104,11 +100,7 @@ class Synthia(Dataset):
             raise FileNotFoundError(f"{len(missing)} files from split list missing. Example: {missing[:5]}")
 
     def __getitem__(self, index):
-        s = self.base_seed + index + self.epoch * 1_000_000
-        random.seed(s)
-        np.random.seed(s)
-
-        img = Image.open(self.shapes[index]).convert("RGB")
+        img = Image.open(self.images[index]).convert("RGB")
 
         mask = np.asarray(imageio.imread(self.masks[index], format="PNG-FI"))[:, :, 0]
         img = np.array(img)

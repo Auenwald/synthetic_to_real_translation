@@ -197,9 +197,9 @@ def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, 
     elif "synthiastyle" in dataset_name:
         print("Use synthia-style as the source dataset")
         if split == "train":
-            dataset = SynthiaStyle(root_dir=path, split='train', transform=get_augmentation('synthia', 'train'), use_synthia_shapes=use_synthia_shapes)
+            dataset = SynthiaStyle(root_dir=path, split='train', transform=get_augmentation('synthia', 'train', seed=seed), use_synthia_shapes=use_synthia_shapes)
         else:
-            dataset = SynthiaStyle(root_dir=path, split='val', transform=get_augmentation('synthia', 'val'))
+            dataset = SynthiaStyle(root_dir=path, split='val', transform=get_augmentation('synthia', 'val', seed=seed))
 
     elif "synthiamixed" in dataset_name:
         print("Use synthia-mixed as the source dataset")
@@ -211,9 +211,9 @@ def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, 
     elif "synthia" in dataset_name:
         print("Use synthia as the source dataset")
         if split == "train":
-            dataset = Synthia(root_dir=path, split='train', transform=get_augmentation('synthia', 'train', seed=seed), use_synthia_shapes=use_synthia_shapes, base_seed=seed)
+            dataset = Synthia(root_dir=path, split='train', transform=get_augmentation('synthia', 'train', seed=seed), use_synthia_shapes=use_synthia_shapes)
         else:
-            dataset = Synthia(root_dir=path, split='val', transform=get_augmentation('synthia', 'val', seed=seed), base_seed=seed)
+            dataset = Synthia(root_dir=path, split='val', transform=get_augmentation('synthia', 'val', seed=seed))
 
     elif "gta5" in dataset_name:
         print("Use Gta 5 as the source dataset")
@@ -224,7 +224,7 @@ def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, 
 
     g = torch.Generator()
     g.manual_seed(seed)
-    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=False, num_workers=1, prefetch_factor=1, worker_init_fn=seed_worker, generator=g)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=False, num_workers=num_workers, prefetch_factor=1, worker_init_fn=seed_worker, generator=g)
 
 
 

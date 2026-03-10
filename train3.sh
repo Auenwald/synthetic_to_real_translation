@@ -19,7 +19,7 @@ python3 train_legacy.py \
   --seed 0
   ############################# 
 
-  ########### SYNTHIA -> Cityscapes, BDD - SEGFORMER B5 - AdamW #########
+########### SYNTHIA -> Cityscapes, BDD - SEGFORMER B5 - AdamW #########
 python3 train_legacy.py \
   --source_path ./synthia \
   --target_paths ./cityscapes ./bdd \
@@ -40,7 +40,7 @@ python3 train_legacy.py \
   --seed 1
   ############################# 
 
-    ########### SYNTHIA -> Cityscapes, BDD - SEGFORMER B5 - AdamW #########
+########### SYNTHIA -> Cityscapes, BDD - SEGFORMER B5 - AdamW #########
 python3 train_legacy.py \
   --source_path ./synthia \
   --target_paths ./cityscapes ./bdd \
@@ -61,7 +61,7 @@ python3 train_legacy.py \
   --seed 2
   ############################# 
 
-      ########### SYNTHIA -> Cityscapes, BDD - SEGFORMER B5 - AdamW #########
+########### SYNTHIA -> Cityscapes, BDD - SEGFORMER B5 - AdamW #########
 python3 train_legacy.py \
   --source_path ./synthia \
   --target_paths ./cityscapes ./bdd \
@@ -82,7 +82,7 @@ python3 train_legacy.py \
   --seed 3
   ############################# 
 
-        ########### SYNTHIA -> Cityscapes, BDD - SEGFORMER B5 - AdamW #########
+########### SYNTHIA -> Cityscapes, BDD - SEGFORMER B5 - AdamW #########
 python3 train_legacy.py \
   --source_path ./synthia \
   --target_paths ./cityscapes ./bdd \

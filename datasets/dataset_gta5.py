@@ -54,7 +54,6 @@ class GTA5(Dataset):
         split='train',
         num_classes=19,
         transform=None,
-        base_seed: int = 0,     # <- NEU
     ):
         self.label_to_trainid = label_to_trainid
         self.root_dir = root_dir
@@ -78,14 +77,6 @@ class GTA5(Dataset):
         self.transform = transform
         self.num_classes = num_classes
 
-        # <- NEU
-        self.base_seed = int(base_seed)
-        self.epoch = 0
-
-    # <- NEU (optional)
-    def set_epoch(self, epoch: int):
-        self.epoch = int(epoch)
-
     def __getitem__(self, index):
         img = np.array(Image.open(self.images[index]))
         mask = np.array(Image.open(self.masks[index]))
@@ -99,17 +90,6 @@ class GTA5(Dataset):
             print(f"[WARN] Auflösung mismatch bei idx {index}: image={img.shape}, label={mask.shape}")
             return None, None
 
-        # ---- NEU: deterministischer per-sample seed ----
-        s = self.base_seed + index + self.epoch * 1_000_000
-
-        # falls du irgendwo eigene Randomness hast (oder später einbaust)
-        random.seed(s)
-        np.random.seed(s)
-
-        # Albumentations-internen RNG setzen (entscheidend!)
-        if self.transform is not None and hasattr(self.transform, "set_random_seed"):
-            self.transform.set_random_seed(s)
-        # -----------------------------------------------
 
         if self.transform:
             transformed = self.transform(image=img, mask=mask)
