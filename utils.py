@@ -186,13 +186,13 @@ def aug_train_dg(seed=None):
     ], mask_interpolation=cv2.INTER_NEAREST, seed=seed)
 
 
-def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, use_synthia_shapes=False, seed=0, num_workers=1):
+def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, use_synthia_shapes=False, seed=0, num_workers=1, num_classes=19):
     if "cityscapes" in dataset_name:
         print("Use cityscapes as the target dataset")
-        dataset = CityScapes(path, split='val', transform=get_augmentation('cityscapes', 'val'))
+        dataset = CityScapes(path, split='val', transform=get_augmentation('cityscapes', 'val'), num_classes=num_classes)
     elif "bdd" in dataset_name:
         print("Use bdd as the target dataset")
-        dataset = BDD(path, split='val', transform=get_augmentation('bdd', 'val'))
+        dataset = BDD(path, split='val', transform=get_augmentation('bdd', 'val'), num_classes=num_classes)
 
     elif "synthiastyle" in dataset_name:
         print("Use synthia-style as the source dataset")

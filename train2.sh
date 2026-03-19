@@ -15,7 +15,7 @@ python train.py \
   --weight_averaging True \
   --averaging_interval 100 \
   --train_print_steps 50 \
-  --gpu 2 \
+  --gpu 6 \
   --seed 0
   ############################# 
 
@@ -36,7 +36,7 @@ python train.py \
   --weight_averaging True \
   --averaging_interval 100 \
   --train_print_steps 50 \
-  --gpu 2 \
+  --gpu 6 \
   --seed 1
   ############################# 
 
@@ -57,6 +57,6 @@ python train.py \
   --weight_averaging True \
   --averaging_interval 100 \
   --train_print_steps 50 \
-  --gpu 2 \
+  --gpu 6 \
   --seed 2
   ############################# 
