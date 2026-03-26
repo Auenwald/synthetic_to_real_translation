@@ -116,18 +116,15 @@ class GTA5(Dataset):
 
         try:
             img = Image.open(img_path).convert("RGB")
-        except Exception as e:
-            print(f"[ERROR] Failed to read image: {img_path} -> {e}")
-            raise
-
-        try:
             mask = Image.open(mask_path)
-        except Exception as e:
-            print(f"[ERROR] Failed to read mask: {mask_path} -> {e}")
-            raise
 
-        img = np.array(img, dtype=np.uint8)
-        mask = np.array(mask, dtype=np.uint8)
+            img = np.array(img, dtype=np.uint8)
+            mask = np.array(mask, dtype=np.uint8)
+
+        except Exception as e:
+            print(f"[SKIP] {img_path}")
+            return None
+
         mask = self.encode_mask(mask)
 
         if self.transform:

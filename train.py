@@ -155,7 +155,7 @@ def main():
     # define the dataloader
     source_train_data_loader = utils.get_dataloader_from_dataset(SOURCE_PATH, SOURCE_DATASET_NAME, 'train', batch_size=BATCH_SIZE, shuffle=True, use_synthia_shapes=USE_SYNTHIA_SHAPES, seed=SEED, num_classes=num_classes)
     source_val_data_loader = utils.get_dataloader_from_dataset(SOURCE_PATH, SOURCE_DATASET_NAME, 'val', batch_size=1, shuffle=False, seed=SEED, num_classes=num_classes)
-
+    
     target_val_loaders = {}
     for target_path in TARGET_PATHS:
         target_name = target_path.split("/")[-1].lower().strip()

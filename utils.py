@@ -1,7 +1,7 @@
 import numpy as np
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, default_collate
 from datasets.dataset_cityscapes import *
 from datasets.dataset_synthia import *
 from datasets.dataset_bdd import *
@@ -186,6 +186,14 @@ def aug_train_dg(seed=None):
     ], mask_interpolation=cv2.INTER_NEAREST, seed=seed)
 
 
+
+def collate_skip_none(batch):
+    batch = [b for b in batch if b is not None]
+    if len(batch) == 0:
+        return None, None
+    return default_collate(batch)
+
+
 def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, use_synthia_shapes=False, seed=0, num_workers=1, num_classes=19):
     if "cityscapes" in dataset_name:
         print("Use cityscapes as the target dataset")
@@ -224,7 +232,7 @@ def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, 
 
     g = torch.Generator()
     g.manual_seed(seed)
-    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=False, num_workers=num_workers, prefetch_factor=1, worker_init_fn=seed_worker, generator=g)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=False, num_workers=num_workers, prefetch_factor=1, worker_init_fn=seed_worker, generator=g, collate_fn=collate_skip_none)
 
 
 
