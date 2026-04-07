@@ -64,6 +64,8 @@ def init_parser(parser):
     parser.add_argument('--gpu', type=int, default=0, help="Specify the gpu used for training")
     parser.add_argument('--use_synthia_shapes', type=lambda x: x == 'True', default=False)
     parser.add_argument('--train_print_steps', type=int, default=50, help="Specify the number of iterations between two mIoU prints during training")
+    parser.add_argument("--mode", type=str, default="dct", help="Specify the mode for the cross attention (dct, dwt, dft, spatial)")
+
 
     parser.add_argument('--seed', type=int, default=0, help='Random seed for reproducibility')
 
@@ -141,6 +143,7 @@ def main():
     USE_LOGGING, LOG_PATH = args.use_logging, args.log_file
     PRINT_INTERVAL = args.train_print_steps
     epoch_modifier = 0
+    MODE = args.mode
 
     SEED = args.seed
     set_seed(SEED)
@@ -164,7 +167,7 @@ def main():
 
 
     # init model
-    model = build_segformer_resnet_hybrid(checkpoint="nvidia/mit-b5", num_labels=num_classes, mode="edge", resnet_depth=34)
+    model = build_segformer_resnet_hybrid(checkpoint="nvidia/mit-b5", num_labels=num_classes, mode=MODE, resnet_depth=34)
 
 
 

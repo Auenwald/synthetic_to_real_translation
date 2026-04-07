@@ -11,7 +11,7 @@ import utils
 from torch_ema import ExponentialMovingAverage
 import pytorch_warmup as  warmup
 import model_utils
-from segformer_crossattention_wrapper import *
+from segformer_crossattention_wrapper_cgating_no_conv import *
 import os
 import json
 from losses import CombinedLoss
@@ -144,14 +144,13 @@ def main():
     PRINT_INTERVAL = args.train_print_steps
     epoch_modifier = 0
 
-    MODE = args.mode
-
     SEED = args.seed
     set_seed(SEED)
 
     DEVICE = f'cuda:{GPU}' if torch.cuda.is_available() else 'cpu'
     print(f'Found the following device: {DEVICE}')
     
+    MODE = args.mode
 
     global num_classes
     num_classes = 16 if "synthia" in SOURCE_PATH else 19
@@ -159,7 +158,7 @@ def main():
     # define the dataloader
     source_train_data_loader = utils.get_dataloader_from_dataset(SOURCE_PATH, SOURCE_DATASET_NAME, 'train', batch_size=BATCH_SIZE, shuffle=True, use_synthia_shapes=USE_SYNTHIA_SHAPES, seed=SEED, num_classes=num_classes)
     source_val_data_loader = utils.get_dataloader_from_dataset(SOURCE_PATH, SOURCE_DATASET_NAME, 'val', batch_size=1, shuffle=False, seed=SEED, num_classes=num_classes)
-    
+
     target_val_loaders = {}
     for target_path in TARGET_PATHS:
         target_name = target_path.split("/")[-1].lower().strip()
@@ -168,7 +167,9 @@ def main():
 
 
     # init model
-    model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b5-finetuned-ade-640-640", ignore_mismatched_sizes=True, num_labels=num_classes)
+    model = SegformerCrossAttentionWrapperLeanFusion(num_classes=num_classes, segformer_name='nvidia/mit-b5', mode=MODE)
+
+
 
     # model = model_utils.get_model_by_name(MODEL_NAME, num_classes)
     model = model.to(DEVICE)

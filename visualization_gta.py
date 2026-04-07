@@ -8,8 +8,11 @@ FIGURE_DIR = "./figures"
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
 paths = [
-    "./logs_diss/gta5_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0999_averaging_interval_20_seed_0.json",
-    "./logs_diss/gta5_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0999_averaging_interval_20_seed_1.json"
+     "./logs_diss/gta5_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0999_averaging_interval_20_seed_0.json",
+     "./logs_diss/gta5_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0999_averaging_interval_20_seed_1.json",
+     "./logs_diss/gta5_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0999_averaging_interval_20_seed_2.json",
+     "./logs_diss/gta5_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0999_averaging_interval_20_seed_3.json",
+     "./logs_diss/gta5_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0999_averaging_interval_20_seed_4.json"
 ]
 
 

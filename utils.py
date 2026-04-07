@@ -232,7 +232,7 @@ def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, 
 
     g = torch.Generator()
     g.manual_seed(seed)
-    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=False, num_workers=num_workers, prefetch_factor=1, worker_init_fn=seed_worker, generator=g, collate_fn=collate_skip_none)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=True, num_workers=2, prefetch_factor=1, worker_init_fn=seed_worker, generator=g, collate_fn=collate_skip_none)
 
 
 

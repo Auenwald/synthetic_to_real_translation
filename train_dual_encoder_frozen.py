@@ -1,3 +1,5 @@
+from email import parser
+
 import torch
 import argparse
 from torch.utils.data import DataLoader, Dataset
@@ -66,6 +68,8 @@ def init_parser(parser):
 
     parser.add_argument('--resume', type=lambda x: x == 'True', default=False, help='Resume training from last checkpoint')
     parser.add_argument('--checkpoint_path', type=str, default='./checkpoints/latest.pth', help='Path to save/load checkpoint')
+    parser.add_argument("--mode", type=str, default="dct", help="Specify the mode for the cross attention (dct, dwt, dft, spatial)")
+
 
     parser.add_argument('--seed', type=int, default=0, help='Random seed for reproducibility')
 
@@ -166,6 +170,7 @@ def main():
     SOURCE_DATASET_NAME = SOURCE_PATH.split("/")[-1].lower().strip()
     GPU = args.gpu
     USE_SYNTHIA_SHAPES = args.use_synthia_shapes
+    MODE = args.mode
 
     USE_LOGGING, LOG_PATH = args.use_logging, args.log_file
     PRINT_INTERVAL = args.train_print_steps
