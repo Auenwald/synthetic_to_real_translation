@@ -52,32 +52,43 @@ class MultiHeadCrossAttention(nn.Module):
         self.num_heads = num_heads
         self.head_dim = attn_dim // num_heads
 
-        self.query = nn.Linear(in_dim, attn_dim)
-        self.key = nn.Linear(in_dim, attn_dim)
-        self.value = nn.Linear(in_dim, attn_dim)
+        self.norm_q  = nn.LayerNorm(in_dim)
+        self.norm_kv = nn.LayerNorm(in_dim)
+
+        self.query   = nn.Linear(in_dim, attn_dim)
+        self.key     = nn.Linear(in_dim, attn_dim)
+        self.value   = nn.Linear(in_dim, attn_dim)
         self.out_proj = nn.Linear(attn_dim, in_dim)
 
     def forward(self, x_q, x_kv, return_attn=False):
-        B, N_q, _ = x_q.shape
+        x_q  = self.norm_q(x_q)
+        x_kv = self.norm_kv(x_kv)
+        
+        B, N_q, _  = x_q.shape
         B, N_kv, _ = x_kv.shape
 
         Q = self.query(x_q).view(B, N_q, self.num_heads, self.head_dim).transpose(1, 2)
         K = self.key(x_kv).view(B, N_kv, self.num_heads, self.head_dim).transpose(1, 2)
         V = self.value(x_kv).view(B, N_kv, self.num_heads, self.head_dim).transpose(1, 2)
 
-        scores = (Q @ K.transpose(-2, -1)) / (self.head_dim ** 0.5)
-        attn = F.softmax(scores, dim=-1)
+        scores  = (Q @ K.transpose(-2, -1)) / (self.head_dim ** 0.5)
+        attn    = F.softmax(scores, dim=-1)
         context = attn @ V
         context = context.transpose(1, 2).contiguous().view(B, N_q, self.num_heads * self.head_dim)
-        
+
         if return_attn:
             return self.out_proj(context), attn
         else:
             return self.out_proj(context)
 
 
+
+import math
+import torch
+import torch.nn as nn
+
 def adapt_input_conv(pretrained_conv: nn.Conv2d, new_in_channels: int) -> nn.Conv2d:
-    old_weight = pretrained_conv.weight.data
+    old_weight = pretrained_conv.weight.detach()
     old_out_channels, old_in_channels, kH, kW = old_weight.shape
 
     new_conv = nn.Conv2d(
@@ -94,13 +105,21 @@ def adapt_input_conv(pretrained_conv: nn.Conv2d, new_in_channels: int) -> nn.Con
             new_weight = old_weight.clone()
 
         elif new_in_channels == 1:
+            # RGB -> 1 Kanal
             new_weight = old_weight.mean(dim=1, keepdim=True)
 
+        elif new_in_channels == 2 and old_in_channels >= 2:
+            # nimm zwei pretrained Kanäle statt zweimal Mittelwert
+            new_weight = old_weight[:, :2, :, :].clone()
+            new_weight *= (old_in_channels / new_in_channels)
+
         elif new_in_channels < old_in_channels:
-            mean_weight = old_weight.mean(dim=1, keepdim=True)
-            new_weight = mean_weight.repeat(1, new_in_channels, 1, 1)
+            # allgemeiner Fallback
+            new_weight = old_weight[:, :new_in_channels, :, :].clone()
+            new_weight *= (old_in_channels / new_in_channels)
 
         else:
+            # mehr Kanäle als vorher -> wiederholen + skalieren
             repeat_factor = math.ceil(new_in_channels / old_in_channels)
             new_weight = old_weight.repeat(1, repeat_factor, 1, 1)[:, :new_in_channels, :, :]
             new_weight *= (old_in_channels / new_in_channels)
@@ -108,18 +127,19 @@ def adapt_input_conv(pretrained_conv: nn.Conv2d, new_in_channels: int) -> nn.Con
         new_conv.weight.copy_(new_weight)
 
         if pretrained_conv.bias is not None and new_conv.bias is not None:
-            new_conv.bias.copy_(pretrained_conv.bias.data)
+            new_conv.bias.copy_(pretrained_conv.bias.detach())
 
     return new_conv
 
 
-class SegformerCrossAttentionWrapperLeanFusion(nn.Module):
+class SegformerCrossAttentionWrapperV2Branched(nn.Module):
     def __init__(self, segformer_name='nvidia/mit-b5', 
                  cross_attn_dims=[64, 128, 256, 384], 
                  downsample_factor=0.5,
                  num_classes=16,
                  num_heads=4,
-                 mode="edge"):
+                 mode="edge",
+                 fuse_stages=(0, 1, 2, 3)):
         super().__init__()
 
         # --- Hybrid Feature Kanalanzahl bestimmen ---
@@ -142,6 +162,7 @@ class SegformerCrossAttentionWrapperLeanFusion(nn.Module):
         self.mode = mode
         self.num_heads = num_heads
         self.downsample_factor = downsample_factor
+        self.fuse_stages = set(fuse_stages)
 
         # --- RGB Branch ---
         base_model_rgb = SegformerForSemanticSegmentation.from_pretrained(segformer_name, num_labels=num_classes)
@@ -151,6 +172,7 @@ class SegformerCrossAttentionWrapperLeanFusion(nn.Module):
         config = self.encoder_rgb.config
 
         # --- Hybrid Branch ---
+        # --- Hybrid Branch ---
         base_model_aux = SegformerForSemanticSegmentation.from_pretrained(
             segformer_name, num_labels=num_classes
         )
@@ -159,7 +181,7 @@ class SegformerCrossAttentionWrapperLeanFusion(nn.Module):
         old_proj = self.encoder_feat_hybrid.patch_embeddings[0].proj
         self.encoder_feat_hybrid.patch_embeddings[0].proj = adapt_input_conv(
             old_proj, self.hybrid_ch_in
-        )       
+        )     
 
         # --- Cross-Attention Layer ---
         self.cross_attn_layers = nn.ModuleList([
@@ -168,87 +190,98 @@ class SegformerCrossAttentionWrapperLeanFusion(nn.Module):
         ])
 
         # --- 1x1 conv after concat fusion ---
-        #self.fusion_convs = nn.ModuleList([
-        #     nn.Conv2d(c*2, c, kernel_size=1) for c in config.hidden_sizes
-        # ])
+        self.fusion_convs = nn.ModuleList([
+            nn.Conv2d(c*2, c, kernel_size=1) for c in config.hidden_sizes
+        ])
 
         # --- Stabiles Gating pro Layer ---
+        # --- Stabiles Gating pro Layer ---
         self.gating_weights = nn.ParameterList([
-        nn.Parameter(torch.full((c,), 1.5))
-        for c in config.hidden_sizes
+            nn.Parameter(torch.full((c,), -2.0))
+            for c in config.hidden_sizes
         ])
 
         # Feature Dropout optional
         # self.feature_dropout = FeatureDropout(drop_prob=0.3, mode="branch")
 
 
-    def forward(self, image_rgb, labels=None, return_attention=False):
+    def forward(self, image_rgb, image_struct=None, labels=None):
         image_rgb = image_rgb.float()
+    
+        # Quelle für Hybrid-Features bestimmen
+        source_for_hybrid = image_struct.float() if image_struct is not None else image_rgb
+        
         with torch.no_grad():
             if self.mode == "fft":
-                feat_hybrid = self.fft_magnitude_1ch(image_rgb)
+                feat_hybrid = self.fft_magnitude_1ch(source_for_hybrid)
             elif self.mode == "multiscale_fft":
-                feat_hybrid = self.normalized_multiscale_fft(image_rgb)
+                feat_hybrid = self.normalized_multiscale_fft(source_for_hybrid)
             elif self.mode == "dct":
-                feat_hybrid = self.dct_map_1ch(image_rgb)
+                feat_hybrid = self.dct_map_1ch(source_for_hybrid)
             elif self.mode == "lab":
-                feat_hybrid = kornia.color.rgb_to_lab(image_rgb)
+                feat_hybrid = kornia.color.rgb_to_lab(source_for_hybrid)
             elif self.mode == "hsv":
-                feat_hybrid = kornia.color.rgb_to_hsv(image_rgb)
+                feat_hybrid = kornia.color.rgb_to_hsv(source_for_hybrid)
             elif self.mode == "fft_dct":
-                feat_hybrid = self.fft_dct_stack(image_rgb)
+                feat_hybrid = self.fft_dct_stack(source_for_hybrid)
             elif self.mode == "fft_dct_edge":
-                feat_hybrid = self.fft_dct_edge_stack(image_rgb)
+                feat_hybrid = self.fft_dct_edge_stack(source_for_hybrid)
             elif self.mode == "wavelet":
-                feat_hybrid = self.wavelet_extractor(image_rgb)
+                feat_hybrid = self.wavelet_extractor(source_for_hybrid)
             else:
-                feat_hybrid = utils.multiscale_scharr_edges(image_rgb)
-
-        feat_hybrid = feat_hybrid.detach()
+                feat_hybrid = utils.multiscale_scharr_edges(source_for_hybrid)
 
         # --- Encoder Outputs ---
         rgb_hidden_states = list(self.encoder_rgb(image_rgb, output_hidden_states=True).hidden_states)
         feat_hybrid_hidden_states = list(self.encoder_feat_hybrid(feat_hybrid, output_hidden_states=True).hidden_states)
 
         cross_features = []
-        attentions_per_layer = []
 
         for i in range(4):
             B, C, H, W = rgb_hidden_states[i].shape
 
+            if i not in self.fuse_stages:
+                cross_features.append(rgb_hidden_states[i])
+                continue
+
             # Downsampling
-            rgb_small = F.interpolate(rgb_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
-            feat_small = F.interpolate(feat_hybrid_hidden_states[i], scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
+            rgb_small = F.interpolate(
+                rgb_hidden_states[i],
+                scale_factor=self.downsample_factor,
+                mode='bilinear',
+                align_corners=False
+            )
+            feat_small = F.interpolate(
+                feat_hybrid_hidden_states[i],
+                scale_factor=self.downsample_factor,
+                mode='bilinear',
+                align_corners=False
+            )
 
             # flattening and reordering of the dimensions
             rgb_flat = rgb_small.flatten(2).transpose(1, 2)
             feat_flat = feat_small.flatten(2).transpose(1, 2)
 
             # Cross-Attention
-            if return_attention:
-                attn_out, attn = self.cross_attn_layers[i](rgb_flat, feat_flat, return_attn=True)
-                attentions_per_layer.append(attn)
-            else:
-                attn_out = self.cross_attn_layers[i](rgb_flat, feat_flat)
+            attn_out = self.cross_attn_layers[i](rgb_flat, feat_flat)
 
-            # channel-wise gating
-            alpha = torch.sigmoid(self.gating_weights[i]).view(1, 1, C)
-            fused = alpha * rgb_flat + (1.0 - alpha) * attn_out
+            # gating mechanism
+            beta = torch.sigmoid(self.gating_weights[i]).view(1, 1, C)
+            fused = rgb_flat + beta * attn_out
 
-            # reshape back
+            # reshaping (back to HxW)
             Hs, Ws = rgb_small.shape[-2:]
-            fused = fused.transpose(1, 2).contiguous().view(B, C, Hs, Ws)
+            fused = fused.transpose(1, 2).reshape(B, C, Hs, Ws)
             fused = F.interpolate(fused, size=(H, W), mode='bilinear', align_corners=False)
 
-            cross_features.append(fused)
+            # Concat + 1x1 Conv Fusion
+            concat_feat = torch.cat([rgb_hidden_states[i], fused], dim=1)
+            fused_conv = self.fusion_convs[i](concat_feat)
 
+            cross_features.append(fused_conv)
+    
         logits = self.decoder(cross_features)
-
-        if return_attention:
-            return logits, attentions_per_layer
-        else:
-            return logits
-        
+        return logits
 
     def fft_magnitude(self, image_rgb):
         # image_rgb: [B, C, H, W]

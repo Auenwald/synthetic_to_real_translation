@@ -4,8 +4,10 @@ from albumentations.pytorch import ToTensorV2
 from torch.utils.data import DataLoader, Dataset, default_collate
 from datasets.dataset_cityscapes import *
 from datasets.dataset_synthia import *
+from datasets.dataset_synthia_branched import SynthiaBranched
 from datasets.dataset_bdd import *
 from datasets.dataset_gta5 import *
+from datasets.dataset_gta5_branched import *
 import kornia
 import torch.nn.functional as F
 import cv2
@@ -190,8 +192,17 @@ def aug_train_dg(seed=None):
 def collate_skip_none(batch):
     batch = [b for b in batch if b is not None]
     if len(batch) == 0:
-        return None, None
-    return default_collate(batch)
+        return None
+
+    if len(batch[0]) == 3:
+        imgs_rgb    = default_collate([b[0] for b in batch])
+        imgs_struct = default_collate([b[1] for b in batch])
+        masks       = default_collate([b[2] for b in batch])
+        return imgs_rgb, imgs_struct, masks
+    else:
+        imgs   = default_collate([b[0] for b in batch])
+        masks  = default_collate([b[1] for b in batch])
+        return imgs, masks
 
 
 def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, use_synthia_shapes=False, seed=0, num_workers=1, num_classes=19):
@@ -216,12 +227,53 @@ def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, 
         else:
             dataset = SynthiaMixed(root_dir='./synthia', split='val', transform=get_augmentation('synthia', 'val'))
 
+
+    elif "synthiabranched" in dataset_name:
+        print("Use SynthiaBranched as source dataset")
+        if split == "train":
+            dataset = SynthiaBranched(
+                root_dir=path,
+                split='train',
+                transform_geo=aug_geo(seed=seed),
+                transform_color=aug_color_normalize(),
+                transform_normalize=aug_normalize_only(),
+                use_synthia_shapes=use_synthia_shapes
+            )
+        else:
+            dataset = SynthiaBranched(
+                root_dir=path,
+                split='val',
+                transform_geo=aug_eval_geo(),
+                transform_color=aug_normalize_only(),
+                transform_normalize=aug_normalize_only(),
+        )
+
     elif "synthia" in dataset_name:
         print("Use synthia as the source dataset")
         if split == "train":
             dataset = Synthia(root_dir=path, split='train', transform=get_augmentation('synthia', 'train', seed=seed), use_synthia_shapes=use_synthia_shapes)
         else:
             dataset = Synthia(root_dir=path, split='val', transform=get_augmentation('synthia', 'val', seed=seed))
+
+
+    elif "gta5branched" in dataset_name:
+        print("Use Gta5Branched as source dataset")
+        if split == "train":
+            dataset = GTA5Branched(
+                root_dir=path,
+                split='train',
+                transform_geo=aug_geo(seed=seed),
+                transform_color=aug_color_normalize(),
+                transform_normalize=aug_normalize_only()
+            )
+        else:
+            dataset = GTA5Branched(
+                root_dir=path,
+                split='val',
+                transform_geo=aug_eval_geo(),
+                transform_color=aug_normalize_only(),
+                transform_normalize=aug_normalize_only(),
+        )
 
     elif "gta5" in dataset_name:
         print("Use Gta 5 as the source dataset")
@@ -232,9 +284,54 @@ def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, 
 
     g = torch.Generator()
     g.manual_seed(seed)
-    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=True, num_workers=2, prefetch_factor=1, worker_init_fn=seed_worker, generator=g, collate_fn=collate_skip_none)
+    # return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=True, num_workers=2, prefetch_factor=1, worker_init_fn=seed_worker, generator=g, collate_fn=collate_skip_none)
+
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=False, num_workers=0, worker_init_fn=seed_worker, generator=g, collate_fn=collate_skip_none)
 
 
+
+
+def aug_eval_geo():
+    """Resize für Val – kein Color, kein Tensor (Geometrie-Schritt)"""
+    return A.Compose([
+        A.Resize(BASE_H, BASE_W),
+    ], mask_interpolation=cv2.INTER_NEAREST)
+
+def aug_geo(seed=None):
+    """Nur Geometrie – wird auf beide Branches angewendet"""
+    return A.Compose([
+        A.HorizontalFlip(p=0.5),
+        A.RandomResizedCrop(
+            size=(BASE_H, BASE_W),
+            scale=(0.75, 1.0),
+            ratio=(0.85, 1.2),
+            p=1.0
+        ),
+    ], mask_interpolation=cv2.INTER_NEAREST, seed=seed)
+
+
+def aug_color_normalize():
+    """Photometrische Augmentierung + Normalize nur für RGB"""
+    return A.Compose([
+        A.OneOf([
+            A.RandomBrightnessContrast(brightness_limit=0.25, contrast_limit=0.25, p=1.0),
+            A.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.08, p=1.0),
+        ], p=0.8),
+        A.OneOf([
+            A.GaussianBlur(blur_limit=(3, 7), p=1.0),
+            A.GaussNoise(std_range=(0.01, 0.03), p=1.0)
+        ], p=0.2),
+        A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ToTensorV2(),
+    ])
+
+
+def aug_normalize_only():
+    """Nur Normalize für Structural-Branch"""
+    return A.Compose([
+        A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ToTensorV2(),
+    ])
 
 def get_image_size(dataset_name):
     return (BASE_H, BASE_W)

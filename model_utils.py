@@ -38,8 +38,12 @@ def get_model_by_name(name, num_classes):
     else:
         raise ValueError("Unknown model name!")
 
-def get_logits(model, data):
-    output = model(data)
+def get_logits(model, data, data_struct=None):
+
+    if data_struct:
+        output = model(data, image_struct=data_struct)
+    else:
+        output = model(data)
 
     # HuggingFace SegFormer
     if isinstance(output, SemanticSegmenterOutput):

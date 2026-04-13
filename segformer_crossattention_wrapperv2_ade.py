@@ -6,7 +6,6 @@ import torch.nn.functional as F
 import kornia
 from torch_dct import dct_2d
 from pytorch_wavelets import DWTForward 
-import math
 
 class WaveletExtractor(nn.Module):
     """
@@ -75,45 +74,7 @@ class MultiHeadCrossAttention(nn.Module):
         else:
             return self.out_proj(context)
 
-
-def adapt_input_conv(pretrained_conv: nn.Conv2d, new_in_channels: int) -> nn.Conv2d:
-    old_weight = pretrained_conv.weight.data
-    old_out_channels, old_in_channels, kH, kW = old_weight.shape
-
-    new_conv = nn.Conv2d(
-        in_channels=new_in_channels,
-        out_channels=pretrained_conv.out_channels,
-        kernel_size=pretrained_conv.kernel_size,
-        stride=pretrained_conv.stride,
-        padding=pretrained_conv.padding,
-        bias=pretrained_conv.bias is not None,
-    )
-
-    with torch.no_grad():
-        if new_in_channels == old_in_channels:
-            new_weight = old_weight.clone()
-
-        elif new_in_channels == 1:
-            new_weight = old_weight.mean(dim=1, keepdim=True)
-
-        elif new_in_channels < old_in_channels:
-            mean_weight = old_weight.mean(dim=1, keepdim=True)
-            new_weight = mean_weight.repeat(1, new_in_channels, 1, 1)
-
-        else:
-            repeat_factor = math.ceil(new_in_channels / old_in_channels)
-            new_weight = old_weight.repeat(1, repeat_factor, 1, 1)[:, :new_in_channels, :, :]
-            new_weight *= (old_in_channels / new_in_channels)
-
-        new_conv.weight.copy_(new_weight)
-
-        if pretrained_conv.bias is not None and new_conv.bias is not None:
-            new_conv.bias.copy_(pretrained_conv.bias.data)
-
-    return new_conv
-
-
-class SegformerCrossAttentionWrapperLeanFusion(nn.Module):
+class SegformerCrossAttentionWrapperV2(nn.Module):
     def __init__(self, segformer_name='nvidia/mit-b5', 
                  cross_attn_dims=[64, 128, 256, 384], 
                  downsample_factor=0.5,
@@ -151,15 +112,14 @@ class SegformerCrossAttentionWrapperLeanFusion(nn.Module):
         config = self.encoder_rgb.config
 
         # --- Hybrid Branch ---
-        base_model_aux = SegformerForSemanticSegmentation.from_pretrained(
-            segformer_name, num_labels=num_classes
+        self.encoder_feat_hybrid = SegformerModel(config).encoder
+        self.encoder_feat_hybrid.patch_embeddings[0].proj = nn.Conv2d(
+            in_channels=self.hybrid_ch_in,
+            out_channels=self.encoder_feat_hybrid.config.hidden_sizes[0],
+            kernel_size=7,
+            stride=4,
+            padding=3
         )
-        self.encoder_feat_hybrid = base_model_aux.segformer.encoder
-
-        old_proj = self.encoder_feat_hybrid.patch_embeddings[0].proj
-        self.encoder_feat_hybrid.patch_embeddings[0].proj = adapt_input_conv(
-            old_proj, self.hybrid_ch_in
-        )       
 
         # --- Cross-Attention Layer ---
         self.cross_attn_layers = nn.ModuleList([
@@ -168,14 +128,14 @@ class SegformerCrossAttentionWrapperLeanFusion(nn.Module):
         ])
 
         # --- 1x1 conv after concat fusion ---
-        #self.fusion_convs = nn.ModuleList([
-        #     nn.Conv2d(c*2, c, kernel_size=1) for c in config.hidden_sizes
-        # ])
+        self.fusion_convs = nn.ModuleList([
+            nn.Conv2d(c*2, c, kernel_size=1) for c in config.hidden_sizes
+        ])
 
         # --- Stabiles Gating pro Layer ---
         self.gating_weights = nn.ParameterList([
-        nn.Parameter(torch.full((c,), 1.5))
-        for c in config.hidden_sizes
+            nn.Parameter(torch.zeros(1))  # Startwert 0 → Sigmoid ≈ 0.5
+            for _ in range(len(config.hidden_sizes))
         ])
 
         # Feature Dropout optional
@@ -231,16 +191,19 @@ class SegformerCrossAttentionWrapperLeanFusion(nn.Module):
             else:
                 attn_out = self.cross_attn_layers[i](rgb_flat, feat_flat)
 
-            # channel-wise gating
-            alpha = torch.sigmoid(self.gating_weights[i]).view(1, 1, C)
-            fused = alpha * rgb_flat + (1.0 - alpha) * attn_out
+            # gating mechanism
+            alpha = torch.sigmoid(self.gating_weights[i])
+            fused = rgb_flat + (1 - alpha) * attn_out
 
-            # reshape back
-            Hs, Ws = rgb_small.shape[-2:]
-            fused = fused.transpose(1, 2).contiguous().view(B, C, Hs, Ws)
+            # reshaping (back to HxW)
+            fused = fused.transpose(1, 2).view(B, C, int(H*self.downsample_factor), int(W*self.downsample_factor))
             fused = F.interpolate(fused, size=(H, W), mode='bilinear', align_corners=False)
 
-            cross_features.append(fused)
+            # Concat + 1x1 Conv Fusion
+            concat_feat = torch.cat([rgb_hidden_states[i], fused], dim=1)
+            fused_conv = self.fusion_convs[i](concat_feat)
+
+            cross_features.append(fused_conv)
 
         logits = self.decoder(cross_features)
 

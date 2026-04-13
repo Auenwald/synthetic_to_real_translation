@@ -1,19 +1,19 @@
 ########### SYNTHIA -> Cityscapes, BDD - SEGFORMER B5 - SGD #########
-python train_sgd.py \
+python train_crossattention_wrapperv2.py \
   --source_path ./synthia \
   --target_paths ./cityscapes ./bdd \
   --batch_size 2 \
   --model_name segformer \
   --lr 1.0e-3 \
   --weight_decay 1e-3 \
-  --optimizer sgd \
+  --optimizer adamw \
   --epochs 30 \
   --use_logging True \
-  --log_file ./logs_diss/synthia_to_cityscapes_bdd_segformer_b5_sgd_lr_1e03_weight_decay_1e03_ema_decay_0995_seed_00.json \
+  --log_file ./logs_diss/synthia_to_cityscapes_bdd_segformer_b5_adamw_lr_1e03_weight_decay_1e03_ema_decay_0995_seed_00.json \
   --skip_val_source False \
   --decay_factor 0.995 \
   --weight_averaging True \
   --averaging_interval 20 \
   --train_print_steps 50 \
-  --gpu 2 \
+  --gpu 3 \
   --seed 0
