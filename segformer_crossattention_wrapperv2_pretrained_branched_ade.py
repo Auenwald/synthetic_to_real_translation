@@ -174,7 +174,6 @@ class SegformerCrossAttentionWrapperV2Branched(nn.Module):
         config = self.encoder_rgb.config
 
         # --- Hybrid Branch ---
-        # --- Hybrid Branch ---
         base_model_aux = SegformerForSemanticSegmentation.from_pretrained(
             'nvidia/segformer-b5-finetuned-ade-640-640',
             num_labels=num_classes,

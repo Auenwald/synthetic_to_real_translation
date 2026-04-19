@@ -169,14 +169,10 @@ class GTA5Branched(GTA5):
 
         # 1) Geometrie einmal gemeinsam
         geo = self.transform_geo(image=img, mask=mask)
-        img_geo = geo["image"]      # numpy array [H, W, 3]
-        mask_out = geo["mask"]      # transformed mask
+        img_geo = geo["image"]
+        mask_out = geo["mask"]
 
-        # 2) RGB-Branch: Color-Augmentierung + Normalize
         rgb_aug = self.transform_color(image=img_geo)["image"]
-        rgb_aug = self.transform_normalize(image=rgb_aug)["image"]
-
-        # 3) Struct-Branch: nur Normalize
         struct = self.transform_normalize(image=img_geo)["image"]
 
         return rgb_aug, struct, mask_out

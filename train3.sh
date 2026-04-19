@@ -1,5 +1,5 @@
 ########### BASELINE: SYNTHIA -> Cityscapes, BDD - wavelets - seed 0,1,2 ###########
-python train_crossattention_branched_ade_legacy.py \
+python train_crossattention_branched_ade.py \
   --source_path ./synthia \
   --source_dataset_name synthiabranched \
   --target_paths ./cityscapes ./bdd \
@@ -10,7 +10,7 @@ python train_crossattention_branched_ade_legacy.py \
   --averaging_interval 20 --train_print_steps 50 --gpu 3 \
   --mode wavelet --seed 0
 
-  python train_crossattention_branched_ade_legacy.py \
+  python train_crossattention_branched_ade.py \
   --source_path ./synthia \
   --source_dataset_name synthiabranched \
   --target_paths ./cityscapes ./bdd \
@@ -22,7 +22,7 @@ python train_crossattention_branched_ade_legacy.py \
   --mode wavelet --seed 1
 
 
-    python train_crossattention_branched_ade_legacy.py \
+    python train_crossattention_branched_ade.py \
   --source_path ./synthia \
   --source_dataset_name synthiabranched \
   --target_paths ./cityscapes ./bdd \

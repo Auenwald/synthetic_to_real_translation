@@ -39,21 +39,17 @@ def get_model_by_name(name, num_classes):
         raise ValueError("Unknown model name!")
 
 def get_logits(model, data, data_struct=None):
-
-    if data_struct:
+    if data_struct is not None:
         output = model(data, image_struct=data_struct)
     else:
         output = model(data)
 
-    # HuggingFace SegFormer
     if isinstance(output, SemanticSegmenterOutput):
         return output.logits
 
-    # torchvision DeepLabV3
     if isinstance(output, dict) and 'out' in output:
         return output['out']
 
-    # Nur Tensor zurückgegeben?
     if isinstance(output, torch.Tensor):
         return output
 
