@@ -159,20 +159,24 @@ class GTA5Branched(GTA5):
         img_path = self.images[index]
         mask_path = self.masks[index]
 
-        img = Image.open(img_path).convert("RGB")
-        mask = Image.open(mask_path)
+        try:
+            img = Image.open(img_path).convert("RGB")
+            mask = Image.open(mask_path)
 
-        img = np.array(img, dtype=np.uint8)
-        mask = np.array(mask, dtype=np.uint8)
+            img = np.array(img, dtype=np.uint8)
+            mask = np.array(mask, dtype=np.uint8)
+
+        except Exception as e:
+            print(f"[SKIP] {img_path}")
+            return None
 
         mask = self.encode_mask(mask)
 
-        # 1) Geometrie einmal gemeinsam
         geo = self.transform_geo(image=img, mask=mask)
-        img_geo = geo["image"]
+        img_geo  = geo["image"]
         mask_out = geo["mask"]
 
         rgb_aug = self.transform_color(image=img_geo)["image"]
-        struct = self.transform_normalize(image=img_geo)["image"]
+        struct  = self.transform_normalize(image=img_geo)["image"]
 
         return rgb_aug, struct, mask_out
