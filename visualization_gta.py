@@ -8,11 +8,11 @@ FIGURE_DIR = "./figures"
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
 paths = [
-     "./logs_diss/gta5_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0999_averaging_interval_20_seed_0.json",
-     "./logs_diss/gta5_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0999_averaging_interval_20_seed_1.json",
-     "./logs_diss/gta5_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0999_averaging_interval_20_seed_2.json",
-     "./logs_diss/gta5_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0999_averaging_interval_20_seed_3.json",
-     "./logs_diss/gta5_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0999_averaging_interval_20_seed_4.json"
+     "./logs_diss/gta5_v3_edge_branched_ade_seed0.json",
+     "./logs_diss/gta5_v3_edge_branched_ade_seed1.json",
+     "./logs_diss/gta5_v3_edge_branched_ade_seed2.json",
+
+   
 ]
 
 
@@ -522,12 +522,12 @@ plot_side_by_side(
 
 # 3) Checkpoint selection
 print_checkpoint_selection(
-    selection_dataset="gta5",
+    selection_dataset="gta5branched",
     target_datasets=["cityscapes", "bdd"]
 )
 
 print_checkpoint_selection(
-    selection_dataset="gta5-ema",
+    selection_dataset="gta5branched-ema",
     target_datasets=["cityscapes-ema", "bdd-ema"]
 )
 
@@ -551,11 +551,11 @@ print(f"\nFigures written to: {FIGURE_DIR}")
 
 # 3) Checkpoint selection
 print_checkpoint_selection(
-    selection_dataset="gta5",
+    selection_dataset="gta5branched",
     target_datasets=["cityscapes", "bdd"]
 )
 
 print_checkpoint_selection(
-    selection_dataset="gta5-ema",
+    selection_dataset="gta5branched-ema",
     target_datasets=["cityscapes-ema", "bdd-ema"]
 )
