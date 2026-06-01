@@ -2,6 +2,7 @@ from pathlib import Path
 from PIL import Image
 from torch.utils.data import Dataset
 import numpy as np
+import torch
 
 ignore_index = 255
 
@@ -142,6 +143,7 @@ class GTA5Branched(GTA5):
         transform_normalize,
         list_dir=None,
         split_tag="seed1337_85-15",
+        mode = "edge"
     ):
         super().__init__(
             root_dir=root_dir,
@@ -154,6 +156,7 @@ class GTA5Branched(GTA5):
         self.transform_geo = transform_geo
         self.transform_color = transform_color
         self.transform_normalize = transform_normalize
+        self.mode = mode
 
     def __getitem__(self, index):
         img_path = self.images[index]
@@ -177,6 +180,10 @@ class GTA5Branched(GTA5):
         mask_out = geo["mask"]
 
         rgb_aug = self.transform_color(image=img_geo)["image"]
-        struct  = self.transform_normalize(image=img_geo)["image"]
+        if self.mode.lower() in {"hsv", "lab"}:
+            struct = torch.from_numpy(img_geo).permute(2, 0, 1).float() / 255.0
+        else:
+            struct = self.transform_normalize(image=img_geo)["image"]
+
 
         return rgb_aug, struct, mask_out

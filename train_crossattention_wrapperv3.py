@@ -104,12 +104,12 @@ def main():
         SOURCE_PATH, SOURCE_DATASET_NAME, 'train',
         batch_size=BATCH_SIZE, shuffle=True,
         use_synthia_shapes=USE_SYNTHIA_SHAPES,
-        seed=SEED, num_classes=num_classes
+        seed=SEED, num_classes=num_classes, mode = MODE
     )
     source_val_data_loader = utils.get_dataloader_from_dataset(
         SOURCE_PATH, SOURCE_DATASET_NAME, 'val',
         batch_size=1, shuffle=False,
-        seed=SEED, num_classes=num_classes
+        seed=SEED, num_classes=num_classes, mode = MODE
     )
 
     target_val_loaders = {}

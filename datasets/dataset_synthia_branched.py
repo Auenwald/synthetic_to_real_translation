@@ -2,6 +2,7 @@ from datasets.dataset_synthia import Synthia
 import numpy as np
 import imageio
 from PIL import Image
+import torch
 
 ignore_label = 255
 
@@ -39,7 +40,9 @@ class SynthiaBranched(Synthia):
                  transform_normalize,
                  use_synthia_shapes=False,
                  list_dir=None,
-                 split_tag="seed1337_85-15"):
+                 split_tag="seed1337_85-15",
+                 mode = "edge"
+                 ):
         super().__init__(
             root_dir=root_dir,
             split=split,
@@ -51,6 +54,7 @@ class SynthiaBranched(Synthia):
         self.transform_geo       = transform_geo
         self.transform_color     = transform_color
         self.transform_normalize = transform_normalize
+        self.mode = mode
 
     def __getitem__(self, index):
         img  = Image.open(self.images[index]).convert("RGB")
@@ -73,6 +77,10 @@ class SynthiaBranched(Synthia):
         rgb_aug = self.transform_color(image=img_geo)["image"]
 
         # 3) Struct-Branch: nur Normalize → Tensor
-        struct  = self.transform_normalize(image=img_geo)["image"]
+        if self.mode.lower() in {"hsv", "lab"}:
+            struct = torch.from_numpy(img_geo).permute(2, 0, 1).float() / 255.0
+        else:
+            struct = self.transform_normalize(image=img_geo)["image"]
+
 
         return rgb_aug, struct, mask_out

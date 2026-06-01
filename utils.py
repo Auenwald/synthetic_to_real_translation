@@ -205,7 +205,7 @@ def collate_skip_none(batch):
         return imgs, masks
 
 
-def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, use_synthia_shapes=False, seed=0, num_workers=1, num_classes=19):
+def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, use_synthia_shapes=False, seed=0, num_workers=1, num_classes=19, mode = "edge"):
     if "cityscapes" in dataset_name:
         print("Use cityscapes as the target dataset")
         dataset = CityScapes(path, split='val', transform=get_augmentation('cityscapes', 'val'), num_classes=num_classes)
@@ -237,7 +237,8 @@ def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, 
                 transform_geo=aug_geo(seed=seed),
                 transform_color=aug_color_normalize(),
                 transform_normalize=aug_normalize_only(),
-                use_synthia_shapes=use_synthia_shapes
+                use_synthia_shapes=use_synthia_shapes,
+                mode = mode
             )
         else:
             dataset = SynthiaBranched(
@@ -246,6 +247,7 @@ def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, 
                 transform_geo=aug_eval_geo(),
                 transform_color=aug_normalize_only(),
                 transform_normalize=aug_normalize_only(),
+                mode = mode
         )
 
     elif "synthia" in dataset_name:
@@ -264,7 +266,8 @@ def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, 
                 split='train',
                 transform_geo=aug_geo(seed=seed),
                 transform_color=aug_color_normalize(),
-                transform_normalize=aug_normalize_only()
+                transform_normalize=aug_normalize_only(),
+                mode = mode
             )
         else:
             dataset = GTA5Branched(
@@ -273,6 +276,7 @@ def get_dataloader_from_dataset(path, dataset_name, split, batch_size, shuffle, 
                 transform_geo=aug_eval_geo(),
                 transform_color=aug_normalize_only(),
                 transform_normalize=aug_normalize_only(),
+                mode = mode
         )
 
     elif "gta5" in dataset_name:
