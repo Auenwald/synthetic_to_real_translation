@@ -8,9 +8,9 @@ FIGURE_DIR = "./figures"
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
 paths = [
-    "./logs_diss/v3_synthia_branched_fft_ade_seed0.json",
-    "./logs_diss/v3_synthia_branched_fft_ade_seed1.json",
-    "./logs_diss/v3_synthia_branched_fft_ade_seed2.json",
+    "./logs_diss/v2_hsv_branched_ade_seed0.json",
+    "./logs_diss/v2_hsv_branched_ade_seed1.json",
+    "./logs_diss/v2_hsv_branched_ade_seed2.json",
 ]
 
 

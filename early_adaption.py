@@ -39,9 +39,9 @@ single_encoder_paths = [
 ]
 
 dual_encoder_paths = [
-    "./logs_diss/v2_wavelets_branched_ade_seed0.json",
-    "./logs_diss/v2_wavelets_branched_ade_seed1.json",
-    "./logs_diss/v2_wavelets_branched_ade_seed2.json",
+    "./logs_diss/v2_edge_branched_ade_seed0.json",
+    "./logs_diss/v2_edge_branched_ade_seed1.json",
+    "./logs_diss/v2_edge_branched_ade_seed2.json",
 ]
 
 METHODS = {

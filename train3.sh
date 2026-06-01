@@ -7,7 +7,7 @@
   --epochs 30 --use_logging True \
   --log_file ./logs_diss/v2_lab_branched_ade_seed1.json \
   --skip_val_source False --decay_factor 0.995 --weight_averaging True \
-  --averaging_interval 20 --train_print_steps 50 --gpu 0 \
+  --averaging_interval 20 --train_print_steps 50 --gpu 3 \
   --mode lab --seed 1
 
 
@@ -19,5 +19,5 @@
   --epochs 30 --use_logging True \
   --log_file ./logs_diss/v2_lab_branched_ade_seed2.json \
   --skip_val_source False --decay_factor 0.995 --weight_averaging True \
-  --averaging_interval 20 --train_print_steps 50 --gpu 0 \
+  --averaging_interval 20 --train_print_steps 50 --gpu 3 \
   --mode lab --seed 2

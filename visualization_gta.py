@@ -8,9 +8,9 @@ FIGURE_DIR = "./figures"
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
 paths = [
-     "./logs_diss/gta5_v3_edge_branched_ade_seed0.json",
-     "./logs_diss/gta5_v3_edge_branched_ade_seed1.json",
-     "./logs_diss/gta5_v3_edge_branched_ade_seed2.json",
+     "./logs_diss/gta5_v3_wavelet_branched_ade_seed0.json",
+     "./logs_diss/gta5_v3_wavelet_branched_ade_seed1.json",
+     "./logs_diss/gta5_v3_wavelet_branched_ade_seed2.json",
 
    
 ]
