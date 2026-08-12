@@ -83,10 +83,6 @@ class MultiHeadCrossAttention(nn.Module):
 
 
 
-import math
-import torch
-import torch.nn as nn
-
 def adapt_input_conv(pretrained_conv: nn.Conv2d, new_in_channels: int) -> nn.Conv2d:
     old_weight = pretrained_conv.weight.detach()
     old_out_channels, old_in_channels, kH, kW = old_weight.shape
@@ -368,7 +364,7 @@ class SegformerCrossAttentionWrapperV2Branched(nn.Module):
     def dct_map_1ch(self, image_rgb):
         """
         image_rgb: [B, C, H, W]
-        return: [B, 1, H, W] DCT-Magnitude
+        return: [B, 1, H, W] standardized channel-averaged DCT coefficients
         """
         # dct per channel
         dct_out = dct_2d(image_rgb)

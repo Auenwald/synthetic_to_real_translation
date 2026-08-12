@@ -1,0 +1,65 @@
+{
+  "input_image": "/home/synthetic_to_real_translation/synthia/RGB/0000000.png",
+  "device": "cuda",
+  "resize_height_width": [
+    380,
+    640
+  ],
+  "auxiliary_normalization": {
+    "mean": [
+      0.485,
+      0.456,
+      0.406
+    ],
+    "std": [
+      0.229,
+      0.224,
+      0.225
+    ]
+  },
+  "scharr_sigmas": [
+    0.5,
+    1.0,
+    2.0
+  ],
+  "tensor_shapes_chw": {
+    "rgb": [
+      3,
+      380,
+      640
+    ],
+    "multiscale_scharr": [
+      1,
+      380,
+      640
+    ],
+    "fft_magnitude": [
+      1,
+      380,
+      640
+    ],
+    "dct": [
+      1,
+      380,
+      640
+    ],
+    "wavelet_details": [
+      9,
+      380,
+      640
+    ],
+    "hsv": [
+      3,
+      380,
+      640
+    ]
+  },
+  "notes": {
+    "wavelet": "Exact model input has 9 channels: RGB x (LH, HL, HH).",
+    "wavelet_display": "The overview uses the mean absolute response across the 9 signed detail channels.",
+    "dct": "dct.npy contains the signed standardized model input; dct_coefficients_raw.npy contains signed coefficients before standardization.",
+    "dct_display": "dct_log_magnitude.png and the overview show log(1 + abs(raw DCT coefficient)).",
+    "hsv": "Kornia hue is stored in radians in [0, 2*pi).",
+    "visualizations": "PNG/PDF files use display mappings; NPY files contain exact tensors."
+  }
+}
