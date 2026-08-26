@@ -16,9 +16,9 @@ SINGLE_ENCODER_PREFIX = (
     "weight_decay_1e03_ema_decay_0995_averaging_interval_20"
 )
 
-BRANCHED_PREFIX = "gta5_v2_edge_branched_ade"
+BRANCHED_PREFIX = "gta5_v2_fft_branched_ade"
 
-SINGLE_ENCODER_SEEDS = [0, 1, 2, 3, 4]
+SINGLE_ENCODER_SEEDS = [0, 1, 2]
 BRANCHED_SEEDS = [0, 1, 2]
 
 
@@ -134,7 +134,7 @@ def plot_architecture_comparison(target_dataset: str) -> None:
         marker="o",
         linewidth=2,
         linestyle="-",
-        label="Single Encoder, no EMA, 5 seeds",
+        label="Single Encoder, no EMA, 3 seeds",
     )
     plt.fill_between(
         x_single,
@@ -167,7 +167,7 @@ def plot_architecture_comparison(target_dataset: str) -> None:
 
     out_path = (
         PLOT_DIR
-        / f"gta5_single_encoder_no_ema_vs_edge_branched_ema_{target_dataset}.png"
+        / f"gta5_single_encoder_no_ema_vs_fft_branched_ema_{target_dataset}.png"
     )
 
     plt.savefig(out_path, dpi=300)
