@@ -13,6 +13,19 @@ import torch.nn.functional as F
 import cv2
 
 
+
+def denormalize_imagenet(image):
+    mean = image.new_tensor(
+        [0.485, 0.456, 0.406]
+    ).view(1, 3, 1, 1)
+
+    std = image.new_tensor(
+        [0.229, 0.224, 0.225]
+    ).view(1, 3, 1, 1)
+
+    return (image * std + mean).clamp(0.0, 1.0)
+
+
 def seed_worker(worker_id: int):
     worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)

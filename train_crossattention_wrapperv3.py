@@ -262,17 +262,24 @@ def validate(val_loader, model, DEVICE, LOG_PATH, applied_ema,
         if data is None or targets is None:
             continue
 
-        data    = data.to(DEVICE)
+        data = data.to(DEVICE)
         targets = targets.to(DEVICE).long()
+
         if data_struct is not None:
             data_struct = data_struct.to(DEVICE)
+        elif getattr(model, "mode", "").lower() == "hsv":
+            data_struct = utils.denormalize_imagenet(data)
 
         with torch.no_grad():
-            output = model(data, image_struct=data_struct, return_aux=False)
+            output = model(
+                data,
+                image_struct=data_struct,
+                return_aux=False
+            )
             output = F.interpolate(
                 output,
                 size=utils.get_image_size(dataset_name),
-                mode='bilinear',
+                mode="bilinear",
                 align_corners=False
             )
 

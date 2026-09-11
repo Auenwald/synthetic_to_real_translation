@@ -255,9 +255,12 @@ def validate(val_loader, model, DEVICE, LOG_PATH, applied_ema,
             continue
 
         data = data.to(DEVICE)
+        targets = targets.to(DEVICE).long()
+
         if data_struct is not None:
             data_struct = data_struct.to(DEVICE)
-        targets = targets.to(DEVICE).long()
+        elif model.mode.lower() == "hsv":
+            data_struct = utils.denormalize_imagenet(data)
 
         with torch.no_grad():
             output = model_utils.get_logits(model, data, data_struct=data_struct)
