@@ -7,21 +7,29 @@ import os
 FIGURE_DIR = "./figures"
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
-paths = [
-    "./logs_diss/synthia_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0995_averaging_interval_20_seed_0_new.json",
-    "./logs_diss/synthia_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0995_averaging_interval_20_seed_1_new.json",
-    "./logs_diss/synthia_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0995_averaging_interval_20_seed_2_new.json",
-    "./logs_diss/synthia_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0995_averaging_interval_20_seed_3_new.json",
-    "./logs_diss/synthia_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0995_averaging_interval_20_seed_4_new.json",
-]
+# paths = [
+#     "./logs_diss/synthia_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0999_averaging_interval_20_seed_0_new.json",
+#     "./logs_diss/synthia_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0999_averaging_interval_20_seed_1_new.json",
+#     "./logs_diss/synthia_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0999_averaging_interval_20_seed_2_new.json",
+#     "./logs_diss/synthia_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0999_averaging_interval_20_seed_3_new.json",
+#     "./logs_diss/synthia_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_0999_averaging_interval_20_seed_4_new.json",
+# ]
 
 
 # paths = [
-#     "./logs_diss/v3_synthia_branched_edge_ade_seed0.json",
-#     "./logs_diss/v3_synthia_branched_edge_ade_seed1.json",
-#     "./logs_diss/v3_synthia_branched_edge_ade_seed2.json",
+#     "./logs_diss/synthia_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_09_averaging_interval_20_seed_0.json",
+#     "./logs_diss/synthia_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_09_averaging_interval_20_seed_1.json",
+#     "./logs_diss/synthia_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_09_averaging_interval_20_seed_2.json",
+#     "./logs_diss/synthia_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_09_averaging_interval_20_seed_3.json",
+#     "./logs_diss/synthia_to_cityscapes_bdd_segformer_b5_adamw_lr_1e05_weight_decay_1e03_ema_decay_09_averaging_interval_20_seed_4.json",
 # ]
 
+
+paths = [
+    "./logs_diss/synthia_static_hsv_fixed_seed0.json",
+    "./logs_diss/synthia_static_hsv_fixed_seed1.json",
+    "./logs_diss/synthia_static_hsv_fixed_seed2.json",
+]
 
 
 # ---------------------------------------------------------
@@ -530,12 +538,12 @@ plot_side_by_side(
 
 # 3) Checkpoint selection
 print_checkpoint_selection(
-    selection_dataset="synthia",
+    selection_dataset="synthiabranched",
     target_datasets=["cityscapes", "bdd"]
 )
 
 print_checkpoint_selection(
-    selection_dataset="synthia-ema",
+    selection_dataset="synthiabranched-ema",
     target_datasets=["cityscapes-ema", "bdd-ema"]
 )
 

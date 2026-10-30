@@ -1,0 +1,76 @@
+\begin{table}[htbp]
+\centering
+\caption[SYNTHIA results: adaptive bidirectional dual encoder on BDD100K across evaluation windows]{%
+\textbf{Temporal performance and checkpoint stability of the adaptive bidirectional
+dual-encoder variants on BDD100K.}
+Training is performed on SYNTHIA. The temporal metrics are computed
+independently for each of three seeds and subsequently aggregated across
+seeds. Reported values denote mean $\pm$ standard deviation across seeds.
+\emph{RGB} denotes the single-encoder model; \emph{RGB + view} denotes the
+dual-encoder model with the corresponding auxiliary view. Bold values indicate the best result for each evaluation window.
+EMA uses the reference configuration ($\lambda=0.995$, $u=20$).}
+\label{tab:synthia_dual_adaptive_windows_bdd}
+\small
+\begin{tabular}{lllccc}
+\toprule
+$\mathcal{W}_{\mathrm{ep}}$ & Configuration & Parameters
+& $\overline{\mu}_{\mathcal{W}_{\mathrm{ep}}}$
+& $\overline{\sigma}_{\mathcal{W}_{\mathrm{ep}}}$
+& $\overline{\Delta}_{\mathcal{W}_{\mathrm{ep}}}$ \\
+\midrule
+\multirow{12}{*}{6--30} & \multirow{2}{*}{RGB} & Online & $38.878 \pm 1.313$ & $1.175 \pm 0.232$ & $4.765 \pm 0.874$ \\
+ &  & EMA & $39.508 \pm 1.055$ & $0.737 \pm 0.228$ & $2.938 \pm 1.031$ \\
+\addlinespace[2pt]
+ & \multirow{2}{*}{RGB + Edge} & Online & $41.339 \pm 0.341$ & $0.960 \pm 0.108$ & $3.869 \pm 0.342$ \\
+ &  & EMA & $\mathbf{41.683 \pm 0.348}$ & $\mathbf{0.719 \pm 0.149}$ & $\mathbf{2.696 \pm 0.144}$ \\
+\addlinespace[2pt]
+ & \multirow{2}{*}{RGB + FFT} & Online & $40.240 \pm 0.372$ & $1.459 \pm 0.322$ & $5.571 \pm 1.252$ \\
+ &  & EMA & $40.635 \pm 0.330$ & $1.149 \pm 0.389$ & $4.194 \pm 1.423$ \\
+\addlinespace[2pt]
+ & \multirow{2}{*}{RGB + DCT} & Online & $39.845 \pm 0.467$ & $1.517 \pm 0.125$ & $6.618 \pm 1.092$ \\
+ &  & EMA & $40.179 \pm 0.429$ & $1.110 \pm 0.089$ & $4.008 \pm 0.338$ \\
+\addlinespace[2pt]
+ & \multirow{2}{*}{RGB + HSV} & Online & $40.723 \pm 0.401$ & $1.613 \pm 0.219$ & $5.801 \pm 0.454$ \\
+ &  & EMA & $41.182 \pm 0.372$ & $1.383 \pm 0.293$ & $4.399 \pm 0.661$ \\
+\addlinespace[2pt]
+ & \multirow{2}{*}{RGB + Wavelet} & Online & $39.742 \pm 0.394$ & $1.243 \pm 0.231$ & $5.017 \pm 0.460$ \\
+ &  & EMA & $40.160 \pm 0.456$ & $1.013 \pm 0.294$ & $3.569 \pm 0.966$ \\
+\midrule
+\multirow{12}{*}{11--30} & \multirow{2}{*}{RGB} & Online & $38.952 \pm 1.230$ & $1.154 \pm 0.169$ & $4.603 \pm 0.834$ \\
+ &  & EMA & $39.624 \pm 0.958$ & $0.634 \pm 0.149$ & $\mathbf{2.189 \pm 0.547}$ \\
+\addlinespace[2pt]
+ & \multirow{2}{*}{RGB + Edge} & Online & $41.191 \pm 0.450$ & $0.848 \pm 0.149$ & $3.141 \pm 0.774$ \\
+ &  & EMA & $\mathbf{41.541 \pm 0.507}$ & $\mathbf{0.596 \pm 0.092}$ & $2.310 \pm 0.293$ \\
+\addlinespace[2pt]
+ & \multirow{2}{*}{RGB + FFT} & Online & $39.828 \pm 0.237$ & $1.246 \pm 0.230$ & $4.249 \pm 0.593$ \\
+ &  & EMA & $40.308 \pm 0.252$ & $0.993 \pm 0.272$ & $3.306 \pm 0.727$ \\
+\addlinespace[2pt]
+ & \multirow{2}{*}{RGB + DCT} & Online & $39.433 \pm 0.437$ & $1.236 \pm 0.183$ & $4.500 \pm 1.006$ \\
+ &  & EMA & $39.842 \pm 0.464$ & $0.913 \pm 0.111$ & $3.022 \pm 0.456$ \\
+\addlinespace[2pt]
+ & \multirow{2}{*}{RGB + HSV} & Online & $40.237 \pm 0.391$ & $1.386 \pm 0.324$ & $5.005 \pm 0.986$ \\
+ &  & EMA & $40.781 \pm 0.344$ & $1.229 \pm 0.310$ & $4.112 \pm 0.597$ \\
+\addlinespace[2pt]
+ & \multirow{2}{*}{RGB + Wavelet} & Online & $39.498 \pm 0.489$ & $1.216 \pm 0.286$ & $4.784 \pm 0.778$ \\
+ &  & EMA & $39.915 \pm 0.528$ & $0.956 \pm 0.333$ & $3.415 \pm 1.033$ \\
+\midrule
+\multirow{12}{*}{16--30} & \multirow{2}{*}{RGB} & Online & $38.679 \pm 1.252$ & $0.979 \pm 0.149$ & $3.761 \pm 0.862$ \\
+ &  & EMA & $39.436 \pm 0.979$ & $0.602 \pm 0.167$ & $2.153 \pm 0.574$ \\
+\addlinespace[2pt]
+ & \multirow{2}{*}{RGB + Edge} & Online & $40.955 \pm 0.507$ & $0.785 \pm 0.164$ & $3.103 \pm 0.825$ \\
+ &  & EMA & $\mathbf{41.331 \pm 0.629}$ & $\mathbf{0.408 \pm 0.067}$ & $\mathbf{1.509 \pm 0.275}$ \\
+\addlinespace[2pt]
+ & \multirow{2}{*}{RGB + FFT} & Online & $39.528 \pm 0.107$ & $1.145 \pm 0.147$ & $3.729 \pm 0.358$ \\
+ &  & EMA & $39.970 \pm 0.237$ & $0.823 \pm 0.184$ & $2.985 \pm 0.722$ \\
+\addlinespace[2pt]
+ & \multirow{2}{*}{RGB + DCT} & Online & $39.041 \pm 0.502$ & $1.150 \pm 0.202$ & $4.075 \pm 0.844$ \\
+ &  & EMA & $39.494 \pm 0.518$ & $0.755 \pm 0.098$ & $2.477 \pm 0.190$ \\
+\addlinespace[2pt]
+ & \multirow{2}{*}{RGB + HSV} & Online & $39.779 \pm 0.191$ & $1.077 \pm 0.275$ & $3.778 \pm 0.880$ \\
+ &  & EMA & $40.266 \pm 0.227$ & $0.907 \pm 0.299$ & $2.819 \pm 0.920$ \\
+\addlinespace[2pt]
+ & \multirow{2}{*}{RGB + Wavelet} & Online & $39.102 \pm 0.579$ & $1.079 \pm 0.343$ & $3.928 \pm 0.850$ \\
+ &  & EMA & $39.567 \pm 0.570$ & $0.776 \pm 0.468$ & $2.757 \pm 1.524$ \\
+\bottomrule
+\end{tabular}
+\end{table}

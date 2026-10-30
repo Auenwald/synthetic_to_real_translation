@@ -1,0 +1,262 @@
+{
+  "arguments": {
+    "logs_dir": "logs_diss",
+    "output_dir": "comparison_dual_encoders",
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "views": [
+      "HSV",
+      "FFT"
+    ],
+    "states": [
+      "online",
+      "ema"
+    ],
+    "windows": [
+      [
+        6,
+        30
+      ],
+      [
+        11,
+        30
+      ],
+      [
+        16,
+        30
+      ]
+    ],
+    "last_epoch": 30,
+    "seed_ddof": 1,
+    "tie_break": "first",
+    "metric": "mean_iou",
+    "source_key": null,
+    "no_plots": false,
+    "per_seed_plots": false
+  },
+  "inputs": [
+    {
+      "view": "HSV",
+      "architecture": "Static",
+      "seed": 0,
+      "path": "/home/synthetic_to_real_translation/logs_diss/synthia_static_hsv_fixed_seed0.json",
+      "resolved_keys": {
+        "online": {
+          "Source": "synthiabranched",
+          "Cityscapes": "cityscapes",
+          "BDD100K": "bdd"
+        },
+        "ema": {
+          "Source": "synthiabranched-ema",
+          "Cityscapes": "cityscapes-ema",
+          "BDD100K": "bdd-ema"
+        }
+      }
+    },
+    {
+      "view": "HSV",
+      "architecture": "Static",
+      "seed": 1,
+      "path": "/home/synthetic_to_real_translation/logs_diss/synthia_static_hsv_fixed_seed1.json",
+      "resolved_keys": {
+        "online": {
+          "Source": "synthiabranched",
+          "Cityscapes": "cityscapes",
+          "BDD100K": "bdd"
+        },
+        "ema": {
+          "Source": "synthiabranched-ema",
+          "Cityscapes": "cityscapes-ema",
+          "BDD100K": "bdd-ema"
+        }
+      }
+    },
+    {
+      "view": "HSV",
+      "architecture": "Static",
+      "seed": 2,
+      "path": "/home/synthetic_to_real_translation/logs_diss/synthia_static_hsv_fixed_seed2.json",
+      "resolved_keys": {
+        "online": {
+          "Source": "synthiabranched",
+          "Cityscapes": "cityscapes",
+          "BDD100K": "bdd"
+        },
+        "ema": {
+          "Source": "synthiabranched-ema",
+          "Cityscapes": "cityscapes-ema",
+          "BDD100K": "bdd-ema"
+        }
+      }
+    },
+    {
+      "view": "HSV",
+      "architecture": "Bidirectional",
+      "seed": 0,
+      "path": "/home/synthetic_to_real_translation/logs_diss/synthia_bidirectional_hsv_fixed_seed0.json",
+      "resolved_keys": {
+        "online": {
+          "Source": "synthiabranched",
+          "Cityscapes": "cityscapes",
+          "BDD100K": "bdd"
+        },
+        "ema": {
+          "Source": "synthiabranched-ema",
+          "Cityscapes": "cityscapes-ema",
+          "BDD100K": "bdd-ema"
+        }
+      }
+    },
+    {
+      "view": "HSV",
+      "architecture": "Bidirectional",
+      "seed": 1,
+      "path": "/home/synthetic_to_real_translation/logs_diss/synthia_bidirectional_hsv_fixed_seed1.json",
+      "resolved_keys": {
+        "online": {
+          "Source": "synthiabranched",
+          "Cityscapes": "cityscapes",
+          "BDD100K": "bdd"
+        },
+        "ema": {
+          "Source": "synthiabranched-ema",
+          "Cityscapes": "cityscapes-ema",
+          "BDD100K": "bdd-ema"
+        }
+      }
+    },
+    {
+      "view": "HSV",
+      "architecture": "Bidirectional",
+      "seed": 2,
+      "path": "/home/synthetic_to_real_translation/logs_diss/synthia_bidirectional_hsv_fixed_seed2.json",
+      "resolved_keys": {
+        "online": {
+          "Source": "synthiabranched",
+          "Cityscapes": "cityscapes",
+          "BDD100K": "bdd"
+        },
+        "ema": {
+          "Source": "synthiabranched-ema",
+          "Cityscapes": "cityscapes-ema",
+          "BDD100K": "bdd-ema"
+        }
+      }
+    },
+    {
+      "view": "FFT",
+      "architecture": "Static",
+      "seed": 0,
+      "path": "/home/synthetic_to_real_translation/logs_diss/v2_fft_branched_ade_seed0.json",
+      "resolved_keys": {
+        "online": {
+          "Source": "synthiabranched",
+          "Cityscapes": "cityscapes",
+          "BDD100K": "bdd"
+        },
+        "ema": {
+          "Source": "synthiabranched-ema",
+          "Cityscapes": "cityscapes-ema",
+          "BDD100K": "bdd-ema"
+        }
+      }
+    },
+    {
+      "view": "FFT",
+      "architecture": "Static",
+      "seed": 1,
+      "path": "/home/synthetic_to_real_translation/logs_diss/v2_fft_branched_ade_seed1.json",
+      "resolved_keys": {
+        "online": {
+          "Source": "synthiabranched",
+          "Cityscapes": "cityscapes",
+          "BDD100K": "bdd"
+        },
+        "ema": {
+          "Source": "synthiabranched-ema",
+          "Cityscapes": "cityscapes-ema",
+          "BDD100K": "bdd-ema"
+        }
+      }
+    },
+    {
+      "view": "FFT",
+      "architecture": "Static",
+      "seed": 2,
+      "path": "/home/synthetic_to_real_translation/logs_diss/v2_fft_branched_ade_seed2.json",
+      "resolved_keys": {
+        "online": {
+          "Source": "synthiabranched",
+          "Cityscapes": "cityscapes",
+          "BDD100K": "bdd"
+        },
+        "ema": {
+          "Source": "synthiabranched-ema",
+          "Cityscapes": "cityscapes-ema",
+          "BDD100K": "bdd-ema"
+        }
+      }
+    },
+    {
+      "view": "FFT",
+      "architecture": "Bidirectional",
+      "seed": 0,
+      "path": "/home/synthetic_to_real_translation/logs_diss/v3_synthia_branched_fft_ade_seed0.json",
+      "resolved_keys": {
+        "online": {
+          "Source": "synthiabranched",
+          "Cityscapes": "cityscapes",
+          "BDD100K": "bdd"
+        },
+        "ema": {
+          "Source": "synthiabranched-ema",
+          "Cityscapes": "cityscapes-ema",
+          "BDD100K": "bdd-ema"
+        }
+      }
+    },
+    {
+      "view": "FFT",
+      "architecture": "Bidirectional",
+      "seed": 1,
+      "path": "/home/synthetic_to_real_translation/logs_diss/v3_synthia_branched_fft_ade_seed1.json",
+      "resolved_keys": {
+        "online": {
+          "Source": "synthiabranched",
+          "Cityscapes": "cityscapes",
+          "BDD100K": "bdd"
+        },
+        "ema": {
+          "Source": "synthiabranched-ema",
+          "Cityscapes": "cityscapes-ema",
+          "BDD100K": "bdd-ema"
+        }
+      }
+    },
+    {
+      "view": "FFT",
+      "architecture": "Bidirectional",
+      "seed": 2,
+      "path": "/home/synthetic_to_real_translation/logs_diss/v3_synthia_branched_fft_ade_seed2.json",
+      "resolved_keys": {
+        "online": {
+          "Source": "synthiabranched",
+          "Cityscapes": "cityscapes",
+          "BDD100K": "bdd"
+        },
+        "ema": {
+          "Source": "synthiabranched-ema",
+          "Cityscapes": "cityscapes-ema",
+          "BDD100K": "bdd-ema"
+        }
+      }
+    }
+  ],
+  "selection": "Source argmax over epochs 1..last_epoch, independently for each seed and parameter trajectory",
+  "target_maximum": "Retrospective maximum over epochs 1..last_epoch; never used for selection",
+  "score_units": "Unchanged from logs; no automatic scaling",
+  "temporal_sd_ddof": 0
+}

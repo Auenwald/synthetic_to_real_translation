@@ -1,0 +1,36 @@
+\begin{table}[htbp]
+\centering
+\caption[SYNTHIA results: adaptive bidirectional dual encoder at source-selected checkpoints]{%
+\textbf{Target-domain performance of the adaptive bidirectional dual-encoder
+variants at source-selected checkpoints.}
+Training is performed on SYNTHIA. Online and EMA checkpoints are selected
+independently for each of three seeds based exclusively on SYNTHIA
+validation performance. Selected epochs are listed per seed. Reported values
+denote mean target-domain mIoU $\pm$ standard deviation across seeds. Bold values indicate the best result for each target domain.
+EMA uses the reference configuration ($\lambda=0.995$, $u=20$).}
+\label{tab:synthia_dual_adaptive_source_selected}
+\small
+\begin{tabular}{llccc}
+\toprule
+Configuration & Parameters & Selected epochs & Cityscapes & BDD100K \\
+\midrule
+\multirow{2}{*}{RGB} & Online & $30, 30, 30$ & $43.581 \pm 1.664$ & $37.330 \pm 1.888$ \\
+ & EMA & $30, 30, 30$ & $44.982 \pm 0.668$ & $38.773 \pm 1.144$ \\
+\addlinespace[2pt]
+\multirow{2}{*}{RGB + Edge} & Online & $30, 30, 30$ & $45.623 \pm 0.302$ & $40.562 \pm 0.781$ \\
+ & EMA & $30, 30, 30$ & $\mathbf{46.036 \pm 0.511}$ & $\mathbf{40.995 \pm 0.816}$ \\
+\addlinespace[2pt]
+\multirow{2}{*}{RGB + FFT} & Online & $30, 30, 30$ & $43.497 \pm 1.109$ & $38.393 \pm 0.642$ \\
+ & EMA & $30, 30, 30$ & $44.172 \pm 0.201$ & $39.158 \pm 0.132$ \\
+\addlinespace[2pt]
+\multirow{2}{*}{RGB + DCT} & Online & $30, 30, 30$ & $43.267 \pm 0.549$ & $37.399 \pm 0.756$ \\
+ & EMA & $30, 30, 30$ & $44.617 \pm 0.696$ & $38.514 \pm 0.561$ \\
+\addlinespace[2pt]
+\multirow{2}{*}{RGB + HSV} & Online & $30, 30, 30$ & $44.818 \pm 0.438$ & $38.658 \pm 0.958$ \\
+ & EMA & $30, 30, 30$ & $45.453 \pm 0.415$ & $39.233 \pm 0.294$ \\
+\addlinespace[2pt]
+\multirow{2}{*}{RGB + Wavelet} & Online & $30, 30, 30$ & $45.273 \pm 0.585$ & $38.505 \pm 1.017$ \\
+ & EMA & $30, 30, 30$ & $45.172 \pm 0.474$ & $38.617 \pm 1.078$ \\
+\bottomrule
+\end{tabular}
+\end{table}

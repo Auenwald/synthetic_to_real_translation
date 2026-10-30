@@ -1,0 +1,26 @@
+{
+  "source_image": "gta5/images/00003.png",
+  "image_shape_HWC": [
+    1052,
+    1914,
+    3
+  ],
+  "input_scaling": "8-bit RGB / 255; no resize, crop, or window",
+  "transforms": "global, channel-wise, then channel-averaged",
+  "dct_type": 2,
+  "dct_norm": "backward",
+  "representation": "theory",
+  "standardization_ddof": 1,
+  "standardization_epsilon": 1e-06,
+  "display_percentile": 99.5,
+  "display_changes_arrays": false,
+  "fft_color_limits": [
+    1.4375209143677203,
+    6.692844661898109
+  ],
+  "dct_color_limits": [
+    -1524.3897337687877,
+    1524.3897337687877
+  ],
+  "dct_symlog_linear_threshold": 15.243897337687876
+}
